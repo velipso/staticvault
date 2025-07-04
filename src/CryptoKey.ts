@@ -49,7 +49,7 @@ export class CryptoKey {
       return null;
     }
     const difficulty = parseFloat(parts[3]);
-    if (isNaN(difficulty) || difficulty <= 0) {
+    if (isNaN(difficulty) || difficulty <= 0 || Math.floor(difficulty) !== difficulty) {
       // invalid difficulty
       return null;
     }
@@ -87,6 +87,9 @@ export class CryptoKey {
   }
 
   async exportWithPassword(password: string, difficulty = 5): Promise<string> {
+    if (isNaN(difficulty) || difficulty <= 0 || Math.floor(difficulty) !== difficulty) {
+      throw new Error(`Invalid difficulty`);
+    }
     const enc = new TextEncoder();
     const salt = crypto.getRandomValues(new Uint8Array(16));
     const iv = crypto.getRandomValues(new Uint8Array(12));
@@ -158,10 +161,8 @@ export class CryptoKey {
   }
 
   async encryptObject(obj: Record<string, unknown> | unknown[]): Promise<string> {
-    const str = await this.encryptString(stringify(obj));
-    // add a random prefix to make it slightly different from encryptString/decryptString
-    const ch = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
-    return ch[Math.floor(Math.random() * ch.length)] + str;
+    // add a prefix to make it slightly different from encryptString/decryptString
+    return 'b' + await this.encryptString(stringify(obj));
   }
 
   async decryptObject(encryptedObj: string): Promise<Record<string, unknown> | unknown[] | null> {

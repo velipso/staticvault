@@ -113,7 +113,7 @@ var StaticVault = (() => {
         return null;
       }
       const difficulty = parseFloat(parts[3]);
-      if (isNaN(difficulty) || difficulty <= 0) {
+      if (isNaN(difficulty) || difficulty <= 0 || Math.floor(difficulty) !== difficulty) {
         return null;
       }
       try {
@@ -151,6 +151,9 @@ var StaticVault = (() => {
       return bytesToString(this.key);
     }
     async exportWithPassword(password, difficulty = 5) {
+      if (isNaN(difficulty) || difficulty <= 0 || Math.floor(difficulty) !== difficulty) {
+        throw new Error(`Invalid difficulty`);
+      }
       const enc = new TextEncoder();
       const salt = crypto.getRandomValues(new Uint8Array(16));
       const iv = crypto.getRandomValues(new Uint8Array(12));
@@ -229,9 +232,7 @@ var StaticVault = (() => {
       }
     }
     async encryptObject(obj) {
-      const str = await this.encryptString(stringify(obj));
-      const ch = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-      return ch[Math.floor(Math.random() * ch.length)] + str;
+      return "b" + await this.encryptString(stringify(obj));
     }
     async decryptObject(encryptedObj) {
       try {
@@ -524,6 +525,12 @@ var StaticVault = (() => {
     }
   };
   var Vault = class _Vault {
+    static {
+      this.DEFAULT_DIFFICULTY = 5;
+    }
+    static {
+      this.ROOT_FILE = "staticvault.txt";
+    }
     constructor(root, difficulty, io) {
       this.root = root;
       this.io = io;
@@ -538,7 +545,7 @@ var StaticVault = (() => {
     }
     static async deserialize(data, password, io) {
       const parts = data.split("~");
-      if (parts.length !== 2) {
+      if (parts.length !== 2 && parts.length !== 3) {
         return null;
       }
       const imp = await CryptoKey.importWithPassword(parts[0], password);
@@ -546,6 +553,13 @@ var StaticVault = (() => {
         return null;
       }
       const { key, difficulty } = imp;
+      if (parts.length === 3) {
+        const exp = parseFloat(await key.decryptString(parts[2]));
+        const now = Math.floor(Date.now() / 6e4);
+        if (now >= exp) {
+          return null;
+        }
+      }
       const root = await VaultFolder.deserialize(-1, key, parts[1]);
       if (!root) {
         return null;
@@ -555,10 +569,18 @@ var StaticVault = (() => {
     containerDirty() {
       return this.root.dirty;
     }
-    async serialize(password, difficulty = 0) {
-      const d = difficulty > 0 ? difficulty : this.difficulty > 0 ? this.difficulty : 5;
-      const k = await this.root.key.exportWithPassword(password, d);
-      return `${k}~${await this.root.serialize()}`;
+    // expiration is enforced on the client-side... so not 100% secure but at least it's something
+    async serialize(password, difficulty = 0, expiresInMinutes = 0) {
+      const d = difficulty > 0 ? difficulty : this.difficulty > 0 ? this.difficulty : _Vault.DEFAULT_DIFFICULTY;
+      const parts = [
+        await this.root.key.exportWithPassword(password, d),
+        await this.root.serialize()
+      ];
+      if (expiresInMinutes > 0) {
+        const exp = Math.ceil(Date.now() / 6e4) + expiresInMinutes;
+        parts.push(await this.root.key.encryptString(`${exp}`));
+      }
+      return parts.join("~");
     }
     async save(forceEverything = false) {
       const saveFile = async (file) => {

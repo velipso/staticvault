@@ -60,10 +60,10 @@ html, body {
 * {
   box-sizing: border-box;
 }
-input, button {
+input, button, select {
   font-size: 18px;
 }
-button {
+button, select {
   color: #111;
   cursor: pointer;
   user-select: none;
@@ -1077,7 +1077,7 @@ function submitPassword() {
   if (root) {
     root = Promise.resolve(root);
   } else {
-    root = io.readString('securevault.txt')
+    root = io.readString(Vault.ROOT_FILE)
   }
   root.then(async (root) => {
     vault = await Vault.deserialize(root, password, io);
@@ -1148,15 +1148,96 @@ function share(show) {
     // show password prompt
     next.removeEventListener('click', setPassword);
     onShareListChange = () => {};
-    sc.innerHTML = '<h1>Password</h1>';
+    sc.innerHTML = '';
+    const form = $c('form');
+    form.style.display = 'block';
+    form.style.margin = '0';
+    form.style.padding = '0';
+    const h1 = $c('h1');
+    h1.innerText = 'Password';
+    form.appendChild(h1);
+    sc.appendChild(form);
     const p = $c('p');
     p.innerText = 'Choose a new secure password:';
-    sc.appendChild(p);
+    form.appendChild(p);
     const warn = $c('p');
     warn.style.display = 'none';
     warn.innerHTML = 'Do not use your password!<br/>Pick a new one!';
-    next.disabled = true;
+
+    const pw = $c('input', { type: 'password' });
+    const p2 = $c('p');
+    p2.appendChild(pw);
+    form.appendChild(p2);
+    form.appendChild(warn);
+    const p3 = $c('p');
+
+    const exch = $c('input', { type: 'checkbox' });
+    exch.id = 'exch';
+    p3.appendChild(exch);
+    const exin = $c('label');
+    exin.htmlFor = 'exch';
+    exin.innerText = ' Expire in: ';
+    p3.appendChild(exin);
+    const exp = $c('input', { type: 'text' });
+    exp.style.width = '70px';
+    exp.value = '7';
+    p3.appendChild(exp);
+    p3.appendChild($t(' '));
+    const expopt = $c('select');
+    const eo1 = $c('option', { value: 'days' });
+    eo1.appendChild($t('days'));
+    expopt.appendChild(eo1);
+    const eo2 = $c('option', { value: 'hours' });
+    eo2.appendChild($t('hours'));
+    expopt.appendChild(eo2);
+    const eo3 = $c('option', { value: 'mins' });
+    eo3.appendChild($t('mins'));
+    expopt.appendChild(eo3);
+    p3.appendChild(expopt);
+
+    const validate = () => {
+      if (pw.value === '') {
+        next.disabled = true;
+        return false;
+      }
+      if (pw.value === $('password-input').value) {
+        next.disabled = true;
+        warn.style.display = '';
+        return false;
+      }
+      if (exch.checked) {
+        const expv = parseFloat(exp.value);
+        if (isNaN(expv) || expv <= 0) {
+          next.disabled = true;
+          return false;
+        }
+      }
+      next.disabled = false;
+      return true;
+    };
+
+    const onExch = () => {
+      if (exch.checked) {
+        exin.style.opacity = '';
+        exp.disabled = false;
+        expopt.disabled = false;
+      } else {
+        exin.style.opacity = '0.5';
+        exp.disabled = true;
+        expopt.disabled = true;
+      }
+      validate();
+    };
+    exch.addEventListener('input', onExch);
+    onExch();
+    pw.addEventListener('input', validate);
+    exp.addEventListener('input', validate);
+    form.appendChild(p3);
+    sc.appendChild(form);
+    pw.focus();
+
     const performShare = async () => {
+      if (!validate()) return;
       // share finished!
       next.remove();
       sc.innerHTML = '<h1>Share Link</h1>';
@@ -1178,7 +1259,24 @@ function share(show) {
             break;
         }
       }
-      const ser = await nv.serialize(pw.value, vault.difficulty);
+      let expiration = 0;
+      if (exch.checked) {
+        const expv = parseFloat(exp.value);
+        switch (expopt.options[expopt.selectedIndex].value) {
+          case 'days':
+            expiration += expv * 60 * 24;
+            break;
+          case 'hours':
+            expiration += expv * 60;
+            break;
+          case 'mins':
+            expiration += expv;
+            break;
+          default:
+            throw new Error(`Unknown expiration unit`);
+        }
+      }
+      const ser = await nv.serialize(pw.value, vault.difficulty, expiration);
       const href = location.href.split('#')[0] + '#' + encodeURIComponent(ser);
       loading.remove();
       const a = $c('a');
@@ -1190,27 +1288,11 @@ function share(show) {
       a.innerText = href;
       sc.appendChild(a);
     };
-    const form = $c('form');
-    form.style.display = 'block';
-    form.style.margin = '0';
-    form.style.padding = '0';
     form.addEventListener('submit', () => {
       performShare();
       return false;
     });
-    const pw = $c('input', { type: 'password' });
-    pw.addEventListener('input', () => {
-      if (pw.value === $('password-input').value) {
-        next.disabled = true;
-        warn.style.display = '';
-      } else {
-        next.disabled = !pw.value;
-      }
-    });
-    form.appendChild(pw);
-    sc.appendChild(form);
-    sc.appendChild(warn);
-    pw.focus();
+
     next.addEventListener('click', performShare);
   };
   next.addEventListener('click', setPassword);

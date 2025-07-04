@@ -1,6 +1,7 @@
 {
   "name": "staticvault",
-  "version": "1.0.2",
+  "version": "1.0.3",
+  "description": "Encrypt, host, and share files on a static website",
   "author": "velipso",
   "license": "0BSD",
   "type": "module",
@@ -13,11 +14,32 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/velipso/staticvault.git"
+    "url": "https://github.com/velipso/staticvault.git"
+  },
+  "keywords": [
+    "encryption",
+    "static hosting",
+    "static site",
+    "s3",
+    "netlify",
+    "github pages",
+    "client-side decryption",
+    "file encryption",
+    "cli",
+    "vault",
+    "privacy",
+    "cdn"
+  ],
+  "homepage": "https://github.com/velipso/staticvault#readme",
+  "bugs": {
+    "url": "https://github.com/velipso/staticvault/issues"
   },
   "devDependencies": {
     "@types/node": "^24.0.7",
     "esbuild": "0.25.5",
     "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "prompt-sync": "^4.2.0"
   }
 }

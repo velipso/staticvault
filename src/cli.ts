@@ -13,7 +13,7 @@ import { Vault } from './Vault';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { execSync } from 'child_process';
+import readline from 'readline';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -24,6 +24,16 @@ function printUsage(filter?: string) {
     console.log(`\nCommands:`);
   } else {
     console.log(`\nCurrent command:`);
+  }
+  if (!filter || filter === 'chpass') {
+    console.log(`
+- chpass <vault> [-p password] [-n newpassword]
+
+  Change vault password
+
+  <vault>          Vault directory
+  [-p password]    Current password
+  [-n newpassword] New password`);
   }
   if (!filter || filter === 'dump') {
     console.log(`
@@ -53,7 +63,7 @@ function printUsage(filter?: string) {
 
   <vault>          Vault directory
   [-p password]    Encryption password
-  [-d difficulty]  Encryption difficulty (default: 5)`);
+  [-d difficulty]  Encryption difficulty (default: ${Vault.DEFAULT_DIFFICULTY})`);
   }
   if (!filter || filter === 'rm') {
     console.log(`
@@ -88,13 +98,37 @@ function printUsage(filter?: string) {
   }
 }
 
-function promptPassword(prompt: string): string {
-  const cmd = `read -s -p "${prompt}: " pwd && echo $pwd`;
-  const result = execSync(`bash -c '${cmd}'`, { stdio: ['inherit', 'pipe', 'inherit'] })
-    .toString()
-    .trim();
-  console.log('');
-  return result;
+async function promptPassword(prompt = 'Password: ') {
+  if (!process.stdin.isTTY) {
+    console.error(`Password prompt requires a TTY`);
+    process.exit(1);
+  }
+  process.stdout.write(prompt + ': ');
+  return await new Promise((resolve) => {
+    const stdin = process.stdin;
+    const input = [];
+    stdin.setRawMode(true);
+    stdin.resume();
+    stdin.setEncoding('utf8');
+
+    const onData = (char) => {
+      if (char === '\r' || char === '\n') {
+        stdin.setRawMode(false);
+        stdin.pause();
+        stdin.removeListener('data', onData);
+        process.stdout.write('\n');
+        resolve(input.join(''));
+      } else if (char === '\u0003') { // ctrl-c
+        process.exit();
+      } else if (char === '\u0008' || char === '\u007F') {
+        input.pop(); // backspace/delete
+      } else {
+        input.push(char);
+      }
+    };
+
+    stdin.on('data', onData);
+  });
 }
 
 function treeChars(depth: number, last: boolean, folder: boolean, status?: string) {
@@ -108,6 +142,76 @@ function treeChars(depth: number, last: boolean, folder: boolean, status?: strin
     postfix += ' ' + status;
   }
   return { prefix, postfix };
+}
+
+async function cmdChpass(args: string[]): Promise<number> {
+  let target: string | null = null;
+  let password: string | null = null;
+  let newpassword: string | null = null;
+  for (;;) {
+    const arg = args.shift();
+    if (typeof arg === 'undefined') break;
+    if (arg === '-p') {
+      if (password === null) {
+        const pw = args.shift();
+        if (typeof pw === 'undefined') {
+          printUsage('chpass');
+          console.error(`\nMissing password`);
+          return 1;
+        }
+        password = pw;
+      } else {
+        printUsage('chpass');
+        console.error(`\nCannot specify password more than once`);
+        return 1;
+      }
+    } else if (arg === '-n') {
+      if (newpassword === null) {
+        const pw = args.shift();
+        if (typeof pw === 'undefined') {
+          printUsage('chpass');
+          console.error(`\nMissing new password`);
+          return 1;
+        }
+        newpassword = pw;
+      } else {
+        printUsage('chpass');
+        console.error(`\nCannot specify new password more than once`);
+        return 1;
+      }
+    } else if (target === null) {
+      target = arg;
+    } else {
+      printUsage('chpass');
+      console.error(`\nUnknown argument: ${arg}`);
+      return 1;
+    }
+  }
+  if (target === null) {
+    printUsage('chpass');
+    console.error(`\nMissing vault directory`);
+    return 1;
+  }
+  if (password === null) {
+    password = await promptPassword('Password');
+  }
+  if (newpassword === null) {
+    newpassword = await promptPassword('New Password');
+    const p2 = await promptPassword('Again');
+    if (newpassword !== p2) {
+      console.error(`Passwords don't match`);
+      return 1;
+    }
+  }
+  const io = new DirectoryFileIO(target, new NodeFileIO());
+  const root = await io.readString(Vault.ROOT_FILE);
+  const vault = await Vault.deserialize(root, password, io);
+  if (!vault) {
+    console.error(`Wrong password`);
+    return 1;
+  }
+  await io.writeString(Vault.ROOT_FILE, await vault.serialize(newpassword));
+  return 0;
 }
 
 async function cmdDump(args: string[]): Promise<number> {
@@ -152,10 +256,10 @@ async function cmdDump(args: string[]): Promise<number> {
     return 1;
   }
   if (password === null) {
-    password = promptPassword('Password');
+    password = await promptPassword('Password');
   }
   const io = new DirectoryFileIO(target, new NodeFileIO());
-  const root = await io.readString('securevault.txt');
+  const root = await io.readString(Vault.ROOT_FILE);
   const vault = await Vault.deserialize(root, password, io);
   if (!vault) {
     console.error(`Wrong password`);
@@ -220,11 +324,11 @@ async function cmdIngest(args: string[]): Promise<number> {
     return 1;
   }
   if (password === null) {
-    password = promptPassword('Password');
+    password = await promptPassword('Password');
   }
   const srcIO = new NodeFileIO();
   const io = new DirectoryFileIO(target, new NodeFileIO());
-  const root = await io.readString('securevault.txt');
+  const root = await io.readString(Vault.ROOT_FILE);
   const vault = await Vault.deserialize(root, password, io);
   if (!vault) {
     console.error(`Wrong password`);
@@ -274,7 +378,7 @@ async function cmdIngest(args: string[]): Promise<number> {
   await walk(0, source);
   await vault.save();
   if (vault.containerDirty()) {
-    await io.writeString('securevault.txt', await vault.serialize(password));
+    await io.writeString(Vault.ROOT_FILE, await vault.serialize(password));
   }
   return 0;
 }
@@ -333,15 +437,15 @@ async function cmdInit(args: string[]): Promise<number> {
     return 1;
   }
   if (difficulty === null) {
-    difficulty = 5;
+    difficulty = Vault.DEFAULT_DIFFICULTY;
   }
   if (isNaN(difficulty) || difficulty < 1 || Math.floor(difficulty) !== difficulty) {
     printUsage('init');
     console.error(`\nInvalid difficulty`);
   }
   if (password === null) {
-    password = promptPassword('Password');
-    const p2 = promptPassword('Again');
+    password = await promptPassword('Password');
+    const p2 = await promptPassword('Again');
     if (password !== p2) {
       console.error(`Passwords don't match`);
       return 1;
@@ -352,7 +456,7 @@ async function cmdInit(args: string[]): Promise<number> {
   const vault = await Vault.create(io);
   const data = await vault.serialize(password, difficulty);
   await Promise.all([
-    io.writeString('securevault.txt', data),
+    io.writeString(Vault.ROOT_FILE, data),
     io.write('index.html', await fs.readFile(path.join(__dirname, 'index.html'))),
     io.write('index.min.js', await fs.readFile(path.join(__dirname, 'index.min.js')))
   ]);
@@ -401,10 +505,10 @@ async function cmdRm(args: string[]): Promise<number> {
     return 1;
   }
   if (password === null) {
-    password = promptPassword('Password');
+    password = await promptPassword('Password');
   }
   const io = new DirectoryFileIO(target, new NodeFileIO());
-  const root = await io.readString('securevault.txt');
+  const root = await io.readString(Vault.ROOT_FILE);
   const vault = await Vault.deserialize(root, password, io);
   if (!vault) {
     console.error(`Wrong password`);
@@ -421,7 +525,7 @@ async function cmdRm(args: string[]): Promise<number> {
   }
   await vault.save();
   if (vault.containerDirty()) {
-    await io.writeString('securevault.txt', await vault.serialize(password));
+    await io.writeString(Vault.ROOT_FILE, await vault.serialize(password));
   }
   return 0;
 }
@@ -634,10 +738,10 @@ async function cmdTree(args: string[]): Promise<number> {
     return 1;
   }
   if (password === null) {
-    password = promptPassword('Password');
+    password = await promptPassword('Password');
   }
   const io = new DirectoryFileIO(target, new NodeFileIO());
-  const root = await io.readString('securevault.txt');
+  const root = await io.readString(Vault.ROOT_FILE);
   const vault = await Vault.deserialize(root, password, io);
   if (!vault) {
     console.error(`Wrong password`);
@@ -680,6 +784,8 @@ async function main(args: string[]): Promise<number> {
   }
   const cmd = args.shift();
   switch (cmd) {
+    case 'chpass':
+      return cmdChpass(args);
     case 'dump':
       return cmdDump(args);
     case 'ingest':

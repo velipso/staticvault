@@ -332,6 +332,8 @@ class VaultFolder {
 }
 
 export class Vault {
+  static DEFAULT_DIFFICULTY = 5;
+  static ROOT_FILE = 'staticvault.txt';
   root: VaultFolder;
   io: FileIO;
   path: { name: string; folder: VaultFolder }[];
@@ -357,7 +359,7 @@ export class Vault {
     io: FileIO
   ): Promise<Vault | null> {
     const parts = data.split('~');
-    if (parts.length !== 2) {
+    if (parts.length !== 2 && parts.length !== 3) {
       return null;
     }
     const imp = await CryptoKey.importWithPassword(parts[0], password);
@@ -365,6 +367,14 @@ export class Vault {
       return null;
     }
     const { key, difficulty } = imp;
+    if (parts.length === 3) {
+      const exp = parseFloat(await key.decryptString(parts[2]));
+      const now = Math.floor(Date.now() / 60000);
+      if (now >= exp) {
+        // expired
+        return null;
+      }
+    }
     const root = await VaultFolder.deserialize(-1, key, parts[1]);
     if (!root) {
       return null;
@@ -376,15 +386,23 @@ export class Vault {
     return this.root.dirty;
   }
 
-  async serialize(password: string, difficulty = 0): Promise<string> {
+  // expiration is enforced on the client-side... so not 100% secure but at least it's something
+  async serialize(password: string, difficulty = 0, expiresInMinutes = 0): Promise<string> {
     const d =
       difficulty > 0
       ? difficulty
       : this.difficulty > 0
       ? this.difficulty
-      : 5;
-    const k = await this.root.key.exportWithPassword(password, d);
-    return `${k}~${await this.root.serialize()}`;
+      : Vault.DEFAULT_DIFFICULTY;
+    const parts = [
+      await this.root.key.exportWithPassword(password, d),
+      await this.root.serialize()
+    ];
+    if (expiresInMinutes > 0) {
+      const exp = Math.ceil(Date.now() / 60000) + expiresInMinutes;
+      parts.push(await this.root.key.encryptString(`${exp}`));
+    }
+    return parts.join('~');
   }
 
   async save(forceEverything = false) {

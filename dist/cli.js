@@ -172,7 +172,7 @@ var CryptoKey = class _CryptoKey {
       return null;
     }
     const difficulty = parseFloat(parts[3]);
-    if (isNaN(difficulty) || difficulty <= 0) {
+    if (isNaN(difficulty) || difficulty <= 0 || Math.floor(difficulty) !== difficulty) {
       return null;
     }
     try {
@@ -210,6 +210,9 @@ var CryptoKey = class _CryptoKey {
     return bytesToString(this.key);
   }
   async exportWithPassword(password, difficulty = 5) {
+    if (isNaN(difficulty) || difficulty <= 0 || Math.floor(difficulty) !== difficulty) {
+      throw new Error(`Invalid difficulty`);
+    }
     const enc = new TextEncoder();
     const salt = crypto.getRandomValues(new Uint8Array(16));
     const iv = crypto.getRandomValues(new Uint8Array(12));
@@ -288,9 +291,7 @@ var CryptoKey = class _CryptoKey {
     }
   }
   async encryptObject(obj) {
-    const str = await this.encryptString(stringify(obj));
-    const ch = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-    return ch[Math.floor(Math.random() * ch.length)] + str;
+    return "b" + await this.encryptString(stringify(obj));
   }
   async decryptObject(encryptedObj) {
     try {
@@ -583,6 +584,12 @@ var VaultFolder = class _VaultFolder {
   }
 };
 var Vault = class _Vault {
+  static {
+    this.DEFAULT_DIFFICULTY = 5;
+  }
+  static {
+    this.ROOT_FILE = "staticvault.txt";
+  }
   constructor(root, difficulty, io) {
     this.root = root;
     this.io = io;
@@ -597,7 +604,7 @@ var Vault = class _Vault {
   }
   static async deserialize(data, password, io) {
     const parts = data.split("~");
-    if (parts.length !== 2) {
+    if (parts.length !== 2 && parts.length !== 3) {
       return null;
     }
     const imp = await CryptoKey.importWithPassword(parts[0], password);
@@ -605,6 +612,13 @@ var Vault = class _Vault {
       return null;
     }
     const { key, difficulty } = imp;
+    if (parts.length === 3) {
+      const exp = parseFloat(await key.decryptString(parts[2]));
+      const now = Math.floor(Date.now() / 6e4);
+      if (now >= exp) {
+        return null;
+      }
+    }
     const root = await VaultFolder.deserialize(-1, key, parts[1]);
     if (!root) {
       return null;
@@ -614,10 +628,18 @@ var Vault = class _Vault {
   containerDirty() {
     return this.root.dirty;
   }
-  async serialize(password, difficulty = 0) {
-    const d = difficulty > 0 ? difficulty : this.difficulty > 0 ? this.difficulty : 5;
-    const k = await this.root.key.exportWithPassword(password, d);
-    return `${k}~${await this.root.serialize()}`;
+  // expiration is enforced on the client-side... so not 100% secure but at least it's something
+  async serialize(password, difficulty = 0, expiresInMinutes = 0) {
+    const d = difficulty > 0 ? difficulty : this.difficulty > 0 ? this.difficulty : _Vault.DEFAULT_DIFFICULTY;
+    const parts = [
+      await this.root.key.exportWithPassword(password, d),
+      await this.root.serialize()
+    ];
+    if (expiresInMinutes > 0) {
+      const exp = Math.ceil(Date.now() / 6e4) + expiresInMinutes;
+      parts.push(await this.root.key.encryptString(`${exp}`));
+    }
+    return parts.join("~");
   }
   async save(forceEverything = false) {
     const saveFile = async (file) => {
@@ -808,7 +830,6 @@ var Vault = class _Vault {
 import * as fs2 from "node:fs/promises";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { execSync } from "child_process";
 var __filename = fileURLToPath(import.meta.url);
 var __dirname = path.dirname(__filename);
 function printUsage(filter) {
@@ -820,6 +841,16 @@ Commands:`);
   } else {
     console.log(`
 Current command:`);
+  }
+  if (!filter || filter === "chpass") {
+    console.log(`
+- chpass <vault> [-p password] [-n newpassword]
+
+  Change vault password
+
+  <vault>          Vault directory
+  [-p password]    Current password
+  [-n newpassword] New password`);
   }
   if (!filter || filter === "dump") {
     console.log(`
@@ -849,7 +880,7 @@ Current command:`);
 
   <vault>          Vault directory
   [-p password]    Encryption password
-  [-d difficulty]  Encryption difficulty (default: 5)`);
+  [-d difficulty]  Encryption difficulty (default: ${Vault.DEFAULT_DIFFICULTY})`);
   }
   if (!filter || filter === "rm") {
     console.log(`
@@ -883,11 +914,35 @@ Current command:`);
   Output version of staticvault`);
   }
 }
-function promptPassword(prompt) {
-  const cmd = `read -s -p "${prompt}: " pwd && echo $pwd`;
-  const result = execSync(`bash -c '${cmd}'`, { stdio: ["inherit", "pipe", "inherit"] }).toString().trim();
-  console.log("");
-  return result;
+async function promptPassword(prompt = "Password: ") {
+  if (!process.stdin.isTTY) {
+    console.error(`Password prompt requires a TTY`);
+    process.exit(1);
+  }
+  process.stdout.write(prompt + ": ");
+  return await new Promise((resolve) => {
+    const stdin = process.stdin;
+    const input = [];
+    stdin.setRawMode(true);
+    stdin.resume();
+    stdin.setEncoding("utf8");
+    const onData = (char) => {
+      if (char === "\r" || char === "\n") {
+        stdin.setRawMode(false);
+        stdin.pause();
+        stdin.removeListener("data", onData);
+        process.stdout.write("\n");
+        resolve(input.join(""));
+      } else if (char === "") {
+        process.exit();
+      } else if (char === "\b" || char === "\x7F") {
+        input.pop();
+      } else {
+        input.push(char);
+      }
+    };
+    stdin.on("data", onData);
+  });
 }
 function treeChars(depth, last, folder, status) {
   let prefix = "";
@@ -900,6 +955,81 @@ function treeChars(depth, last, folder, status) {
     postfix += " " + status;
   }
   return { prefix, postfix };
+}
+async function cmdChpass(args) {
+  let target = null;
+  let password = null;
+  let newpassword = null;
+  for (; ; ) {
+    const arg = args.shift();
+    if (typeof arg === "undefined") break;
+    if (arg === "-p") {
+      if (password === null) {
+        const pw = args.shift();
+        if (typeof pw === "undefined") {
+          printUsage("chpass");
+          console.error(`
+Missing password`);
+          return 1;
+        }
+        password = pw;
+      } else {
+        printUsage("chpass");
+        console.error(`
+Cannot specify password more than once`);
+        return 1;
+      }
+    } else if (arg === "-n") {
+      if (newpassword === null) {
+        const pw = args.shift();
+        if (typeof pw === "undefined") {
+          printUsage("chpass");
+          console.error(`
+Missing new password`);
+          return 1;
+        }
+        newpassword = pw;
+      } else {
+        printUsage("chpass");
+        console.error(`
+Cannot specify new password more than once`);
+        return 1;
+      }
+    } else if (target === null) {
+      target = arg;
+    } else {
+      printUsage("chpass");
+      console.error(`
+Unknown argument: ${arg}`);
+      return 1;
+    }
+  }
+  if (target === null) {
+    printUsage("chpass");
+    console.error(`
+Missing vault directory`);
+    return 1;
+  }
+  if (password === null) {
+    password = await promptPassword("Password");
+  }
+  if (newpassword === null) {
+    newpassword = await promptPassword("New Password");
+    const p2 = await promptPassword("Again");
+    if (newpassword !== p2) {
+      console.error(`Passwords don't match`);
+      return 1;
+    }
+  }
+  const io = new DirectoryFileIO(target, new NodeFileIO());
+  const root = await io.readString(Vault.ROOT_FILE);
+  const vault = await Vault.deserialize(root, password, io);
+  if (!vault) {
+    console.error(`Wrong password`);
+    return 1;
+  }
+  await io.writeString(Vault.ROOT_FILE, await vault.serialize(newpassword));
+  return 0;
 }
 async function cmdDump(args) {
   let target = null;
@@ -948,10 +1078,10 @@ Missing destination directory`);
     return 1;
   }
   if (password === null) {
-    password = promptPassword("Password");
+    password = await promptPassword("Password");
   }
   const io = new DirectoryFileIO(target, new NodeFileIO());
-  const root = await io.readString("securevault.txt");
+  const root = await io.readString(Vault.ROOT_FILE);
   const vault = await Vault.deserialize(root, password, io);
   if (!vault) {
     console.error(`Wrong password`);
@@ -1020,11 +1150,11 @@ Missing source directory`);
     return 1;
   }
   if (password === null) {
-    password = promptPassword("Password");
+    password = await promptPassword("Password");
   }
   const srcIO = new NodeFileIO();
   const io = new DirectoryFileIO(target, new NodeFileIO());
-  const root = await io.readString("securevault.txt");
+  const root = await io.readString(Vault.ROOT_FILE);
   const vault = await Vault.deserialize(root, password, io);
   if (!vault) {
     console.error(`Wrong password`);
@@ -1074,7 +1204,7 @@ Missing source directory`);
   await walk(0, source);
   await vault.save();
   if (vault.containerDirty()) {
-    await io.writeString("securevault.txt", await vault.serialize(password));
+    await io.writeString(Vault.ROOT_FILE, await vault.serialize(password));
   }
   return 0;
 }
@@ -1139,7 +1269,7 @@ Missing vault directory`);
     return 1;
   }
   if (difficulty === null) {
-    difficulty = 5;
+    difficulty = Vault.DEFAULT_DIFFICULTY;
   }
   if (isNaN(difficulty) || difficulty < 1 || Math.floor(difficulty) !== difficulty) {
     printUsage("init");
@@ -1147,8 +1277,8 @@ Missing vault directory`);
 Invalid difficulty`);
   }
   if (password === null) {
-    password = promptPassword("Password");
-    const p2 = promptPassword("Again");
+    password = await promptPassword("Password");
+    const p2 = await promptPassword("Again");
     if (password !== p2) {
       console.error(`Passwords don't match`);
       return 1;
@@ -1159,7 +1289,7 @@ Invalid difficulty`);
   const vault = await Vault.create(io);
   const data = await vault.serialize(password, difficulty);
   await Promise.all([
-    io.writeString("securevault.txt", data),
+    io.writeString(Vault.ROOT_FILE, data),
     io.write("index.html", await fs2.readFile(path.join(__dirname, "index.html"))),
     io.write("index.min.js", await fs2.readFile(path.join(__dirname, "index.min.js")))
   ]);
@@ -1212,10 +1342,10 @@ Missing secure path`);
     return 1;
   }
   if (password === null) {
-    password = promptPassword("Password");
+    password = await promptPassword("Password");
   }
   const io = new DirectoryFileIO(target, new NodeFileIO());
-  const root = await io.readString("securevault.txt");
+  const root = await io.readString(Vault.ROOT_FILE);
   const vault = await Vault.deserialize(root, password, io);
   if (!vault) {
     console.error(`Wrong password`);
@@ -1232,7 +1362,7 @@ Missing secure path`);
   }
   await vault.save();
   if (vault.containerDirty()) {
-    await io.writeString("securevault.txt", await vault.serialize(password));
+    await io.writeString(Vault.ROOT_FILE, await vault.serialize(password));
   }
   return 0;
 }
@@ -1425,10 +1555,10 @@ Missing vault directory`);
     return 1;
   }
   if (password === null) {
-    password = promptPassword("Password");
+    password = await promptPassword("Password");
   }
   const io = new DirectoryFileIO(target, new NodeFileIO());
-  const root = await io.readString("securevault.txt");
+  const root = await io.readString(Vault.ROOT_FILE);
   const vault = await Vault.deserialize(root, password, io);
   if (!vault) {
     console.error(`Wrong password`);
@@ -1469,6 +1599,8 @@ async function main(args) {
   }
   const cmd = args.shift();
   switch (cmd) {
+    case "chpass":
+      return cmdChpass(args);
     case "dump":
       return cmdDump(args);
     case "ingest":

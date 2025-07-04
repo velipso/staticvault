@@ -15,9 +15,15 @@ Features
 
 - Encrypt files locally
 - Host anywhere: S3, Netlify, GitHub Pages, etc
-- In-browser decryption and preview for text/images
-- Share a subset of your files/folders with friends (no server needed!)
+- Duplicate files are only stored once
 - CLI for creating, ingesting, listing, and extracting files
+
+Client features:
+
+- Mobile friendly site for browsing files
+- Preview images/text in browser
+- Share files/folders with friends
+- Set expiration for shared links (enforced client-side)
 
 Quick Start
 -----------
@@ -39,6 +45,14 @@ Commands
 
 ```bash
 npx staticvault <command> [arguments]
+```
+
+## `chpass`
+
+Change vault password.
+
+```bash
+chpass <vault> [-p password] [-n newpassword]
 ```
 
 ## `init`
