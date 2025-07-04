@@ -1,10 +1,13 @@
 {
   "name": "staticvault",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": "velipso",
   "license": "0BSD",
   "type": "module",
   "main": "./dist/cli.js",
+  "bin": {
+    "staticvault": "dist/cli.js"
+  },
   "scripts": {
     "tsc": "tsc"
   },

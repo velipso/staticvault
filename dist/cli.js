@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 // src/util.ts
 function bytesToString(bytes) {
   const b64 = typeof process !== "undefined" ? Buffer.from(bytes).toString("base64") : btoa(String.fromCharCode(...bytes));
