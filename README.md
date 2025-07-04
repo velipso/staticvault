@@ -11,15 +11,15 @@ browser-based app (included) allows in-browser decryption and previews of text a
 Features
 --------
 
-- 💾 Encrypt files locally — nothing leaves your machine unencrypted
-- 🌐 Host anywhere: S3, Netlify, GitHub Pages
+- 💾 Encrypt files locally
+- 🌐 Host anywhere: S3, Netlify, GitHub Pages, etc
 - 🖼️ In-browser decryption and preview for text/images
 - 🗂️ CLI for creating, ingesting, listing, and extracting files
 
 Quick Start
 -----------
 
-You don’t need to install anything globally - just use `npx`:
+You don't need to install anything globally - just use `npx`:
 
 ```bash
 npx staticvault init path/to/vault
