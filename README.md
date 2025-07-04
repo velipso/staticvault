@@ -8,13 +8,16 @@ delivery, and easily hosted on static blogs (Hugo, Jekyll, etc).
 You encrypt and manage your files locally, then deploy the encrypted vault. A lightweight
 browser-based app (included) allows in-browser decryption and previews of text and images.
 
+[Demo vault](https://sean.fun/staticvault-demo/) (password: `hello`).
+
 Features
 --------
 
-- 💾 Encrypt files locally
-- 🌐 Host anywhere: S3, Netlify, GitHub Pages, etc
-- 🖼️ In-browser decryption and preview for text/images
-- 🗂️ CLI for creating, ingesting, listing, and extracting files
+- Encrypt files locally
+- Host anywhere: S3, Netlify, GitHub Pages, etc
+- In-browser decryption and preview for text/images
+- Share a subset of your files/folders with friends (no server needed!)
+- CLI for creating, ingesting, listing, and extracting files
 
 Quick Start
 -----------
@@ -23,7 +26,7 @@ You don't need to install anything globally - just use `npx`:
 
 ```bash
 npx staticvault init path/to/vault
-npx staticvault ingest path/to/files path/to/vault
+npx staticvault ingest path/to/vault path/to/files
 ```
 
 Then upload the contents of `path/to/vault` to your static site host.
@@ -51,7 +54,7 @@ npx staticvault init <vault> [-p password] [-d difficulty]
 Encrypt and add files to an existing vault.
 
 ```bash
-npx staticvault ingest <source> <vault> [-p password]
+npx staticvault ingest <vault> <source> [-p password]
 ```
 
 ## `dump`
@@ -86,13 +89,21 @@ Run internal tests.
 npx staticvault test
 ```
 
+## `version`
+
+Output version
+
+```bash
+npx staticvault version
+```
+
 Example Workflow
 ----------------
 
 ```bash
-npx staticvault init myvault -p mypassword
-npx staticvault ingest ./blog-attachments myvault -p mypassword
-npx staticvault tree myvault -p mypassword
+npx staticvault init myvault
+npx staticvault ingest myvault ./blog-attachments
+npx staticvault tree myvault
 ```
 
 Then upload the contents of `myvault/` to your static host.

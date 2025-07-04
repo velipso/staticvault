@@ -833,12 +833,12 @@ Current command:`);
   }
   if (!filter || filter === "ingest") {
     console.log(`
-- ingest <source> <vault> [-p password]
+- ingest <vault> <source> [-p password]
 
   Encrypt and copy source folders/files into vault
 
-  <source>         Source directory
   <vault>          Vault directory
+  <source>         Source directory
   [-p password]    Encryption password`);
   }
   if (!filter || filter === "init") {
@@ -875,6 +875,12 @@ Current command:`);
 
   <vault>          Vault directory
   [-p password]    Encryption password`);
+  }
+  if (!filter || filter === "version") {
+    console.log(`
+- version
+
+  Output version of staticvault`);
   }
 }
 function promptPassword(prompt) {
@@ -968,8 +974,8 @@ Missing destination directory`);
   return 0;
 }
 async function cmdIngest(args) {
-  let source = null;
   let target = null;
+  let source = null;
   let password = null;
   for (; ; ) {
     const arg = args.shift();
@@ -990,10 +996,10 @@ Missing password`);
 Cannot specify password more than once`);
         return 1;
       }
-    } else if (source === null) {
-      source = arg;
     } else if (target === null) {
       target = arg;
+    } else if (source === null) {
+      source = arg;
     } else {
       printUsage("ingest");
       console.error(`
@@ -1001,16 +1007,16 @@ Unknown argument: ${arg}`);
       return 1;
     }
   }
-  if (source === null) {
-    printUsage("ingest");
-    console.error(`
-Missing source directory`);
-    return 1;
-  }
   if (target === null) {
     printUsage("ingest");
     console.error(`
 Missing vault directory`);
+    return 1;
+  }
+  if (source === null) {
+    printUsage("ingest");
+    console.error(`
+Missing source directory`);
     return 1;
   }
   if (password === null) {
@@ -1446,6 +1452,16 @@ Missing vault directory`);
   await walk(0);
   return 0;
 }
+async function cmdVersion(args) {
+  const data = await fs2.readFile(path.join(__dirname, "..", "package.json"), { encoding: "utf8" });
+  const pack = JSON.parse(data);
+  console.log(`StaticVault v${pack.version}
+Encrypt, host, and share files on a static website
+by Sean Connelly (@velipso), https://sean.fun
+Project Home: https://github.com/velipso/staticvault
+SPDX-License-Identifier: 0BSD`);
+  return 0;
+}
 async function main(args) {
   if (args.length <= 0) {
     printUsage();
@@ -1465,6 +1481,8 @@ async function main(args) {
       return cmdTest(args);
     case "tree":
       return cmdTree(args);
+    case "version":
+      return cmdVersion(args);
     default:
       printUsage();
       console.error(`

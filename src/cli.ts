@@ -37,12 +37,12 @@ function printUsage(filter?: string) {
   }
   if (!filter || filter === 'ingest') {
     console.log(`
-- ingest <source> <vault> [-p password]
+- ingest <vault> <source> [-p password]
 
   Encrypt and copy source folders/files into vault
 
-  <source>         Source directory
   <vault>          Vault directory
+  <source>         Source directory
   [-p password]    Encryption password`);
   }
   if (!filter || filter === 'init') {
@@ -79,6 +79,12 @@ function printUsage(filter?: string) {
 
   <vault>          Vault directory
   [-p password]    Encryption password`);
+  }
+  if (!filter || filter === 'version') {
+    console.log(`
+- version
+
+  Output version of staticvault`);
   }
 }
 
@@ -173,8 +179,8 @@ async function cmdDump(args: string[]): Promise<number> {
 }
 
 async function cmdIngest(args: string[]): Promise<number> {
-  let source: string | null = null;
   let target: string | null = null;
+  let source: string | null = null;
   let password: string | null = null;
   for (;;) {
     const arg = args.shift();
@@ -193,24 +199,24 @@ async function cmdIngest(args: string[]): Promise<number> {
         console.error(`\nCannot specify password more than once`);
         return 1;
       }
-    } else if (source === null) {
-      source = arg;
     } else if (target === null) {
       target = arg;
+    } else if (source === null) {
+      source = arg;
     } else {
       printUsage('ingest');
       console.error(`\nUnknown argument: ${arg}`);
       return 1;
     }
   }
-  if (source === null) {
-    printUsage('ingest');
-    console.error(`\nMissing source directory`);
-    return 1;
-  }
   if (target === null) {
     printUsage('ingest');
     console.error(`\nMissing vault directory`);
+    return 1;
+  }
+  if (source === null) {
+    printUsage('ingest');
+    console.error(`\nMissing source directory`);
     return 1;
   }
   if (password === null) {
@@ -656,6 +662,17 @@ async function cmdTree(args: string[]): Promise<number> {
   return 0;
 }
 
+async function cmdVersion(args: string[]): Promise<number> {
+  const data = await fs.readFile(path.join(__dirname, '..', 'package.json'), { encoding: 'utf8' });
+  const pack = JSON.parse(data);
+  console.log(`StaticVault v${pack.version}
+Encrypt, host, and share files on a static website
+by Sean Connelly (@velipso), https://sean.fun
+Project Home: https://github.com/velipso/staticvault
+SPDX-License-Identifier: 0BSD`);
+  return 0;
+}
+
 async function main(args: string[]): Promise<number> {
   if (args.length <= 0) {
     printUsage();
@@ -675,6 +692,8 @@ async function main(args: string[]): Promise<number> {
       return cmdTest(args);
     case 'tree':
       return cmdTree(args);
+    case 'version':
+      return cmdVersion(args);
     default:
       printUsage();
       console.error(`\nUnknown command: ${cmd}`);
