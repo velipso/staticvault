@@ -984,7 +984,7 @@ Current command:`);
     console.log(`
 - version
 
-  Output version of staticvault`);
+  Output version of staticvault.`);
   }
 }
 async function promptPassword(prompt = "Password: ") {

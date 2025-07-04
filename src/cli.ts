@@ -108,7 +108,7 @@ function printUsage(filter?: string) {
     console.log(`
 - version
 
-  Output version of staticvault`);
+  Output version of staticvault.`);
   }
 }
 

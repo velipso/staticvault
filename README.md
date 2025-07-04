@@ -116,7 +116,7 @@ npx staticvault tree <vault> [-p password]
 
 ## `version`
 
-Output version
+Output version.
 
 ```bash
 npx staticvault version
