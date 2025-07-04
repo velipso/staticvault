@@ -79,6 +79,17 @@ Decrypt the vault into a directory.
 npx staticvault dump <vault> <destination> [-p password]
 ```
 
+## `rekey`
+
+Generates new encryption keys. By default, this will rotate the metadata keys. Use `-a` to rotate
+the file keys as well, but this will mean re-encrypting all files, which could be expensive.
+
+Useful for revoking access to all shared links.
+
+```bash
+npx staticvault rekey <vault> [-p password] [-a]
+```
+
 ## `rm`
 
 Remove a file or folder from the vault.

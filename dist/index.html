@@ -994,7 +994,18 @@ function showFolder() {
         const div = $c('div', { className: 'loading' });
         div.appendChild(loadingSVG());
         con.appendChild(div);
-        await vault.enterFolder(name);
+        try {
+          await vault.enterFolder(name);
+        } catch (err) {
+          // failed to decrypt folder
+          div.remove();
+          const p = $c('p');
+          p.style.textAlign = 'center';
+          p.style.margin = '40px';
+          p.innerText = 'Failed to decrypt folder';
+          con.appendChild(p);
+          return;
+        }
         showFolder();
       }));
     }
@@ -1255,10 +1266,10 @@ function share(show) {
       for (const sh of shareList) {
         switch (sh.kind) {
           case 'folder':
-            await nv.putFolderLink(sh.name, sh.itemPath, vault);
+            await nv.putFolderLink(sh.name, sh.itemPath, vault).catch(() => {});
             break;
           case 'file':
-            await nv.putFileLink(sh.name, sh.itemPath, vault);
+            await nv.putFileLink(sh.name, sh.itemPath, vault).catch(() => {});
             break;
         }
       }

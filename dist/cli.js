@@ -369,7 +369,7 @@ var VaultFile = class _VaultFile {
     };
   }
   static isMetadata(obj) {
-    return obj !== null && typeof obj === "object" && !Array.isArray(obj) && "f" in obj && typeof obj.f === "string" && "h" in obj && typeof obj.h === "string" && "v" in obj && typeof obj.v === "string";
+    return obj !== null && typeof obj === "object" && !Array.isArray(obj) && "f" in obj && typeof obj.f === "string" && "h" in obj && typeof obj.h === "string" && "j" in obj && typeof obj.j === "string" && "v" in obj && typeof obj.v === "string";
   }
   static async deserialize(id, key, metadata) {
     const obj = await key.decryptObject(metadata);
@@ -656,6 +656,65 @@ var Vault = class _Vault {
     };
     await saveFolder(this.root);
   }
+  async rekey(all = false, silent = false) {
+    const newFiles = /* @__PURE__ */ new Map();
+    const newFolders = /* @__PURE__ */ new Map();
+    const rekeyFile = async (path2, file) => {
+      if (!silent) {
+        console.log(path2);
+      }
+      file.key = await CryptoKey.generate();
+      file.dirty = true;
+      newFiles.set(file.id, file);
+      if (all) {
+        let fkey = CryptoKey.importUnsafeRaw(file.metadata.j);
+        const oldBytes = await this.io.read(file.metadata.f);
+        const bytes = await fkey.decryptBytes(oldBytes, file.metadata.v);
+        if (!bytes) {
+          if (!silent) {
+            console.warn(`Warning: Failed to decrypt file: ${path2} (${file.metadata.f})`);
+          }
+          return;
+        }
+        fkey = await CryptoKey.generate();
+        const { encryptedBytes, iv } = await fkey.encryptBytes(bytes);
+        file.metadata.j = fkey.exportUnsafeRaw();
+        file.metadata.v = iv;
+        await this.io.write(file.metadata.f, encryptedBytes);
+      }
+    };
+    const rekeyFolder = async (path2, folder) => {
+      if (!silent && path2) {
+        console.log(path2);
+      }
+      folder.key = await CryptoKey.generate();
+      folder.dirty = true;
+      newFolders.set(folder.id, folder);
+      for (const name of folder.listFolders()) {
+        const sub = await folder.getFolder(name, this.io);
+        const sub2 = newFolders.get(sub.id);
+        folder.deleteFolder(name);
+        if (sub2) {
+          folder.putFolder(name, sub2);
+        } else {
+          await rekeyFolder(`${path2}/${name}`, sub);
+          folder.putFolder(name, sub);
+        }
+      }
+      for (const name of folder.listFiles()) {
+        const file = await folder.getFile(name, this.io);
+        const file2 = newFiles.get(file.id);
+        folder.deleteFile(name);
+        if (file2) {
+          folder.putFile(name, file2);
+        } else {
+          await rekeyFile(`${path2}/${name}`, file);
+          folder.putFile(name, file);
+        }
+      }
+    };
+    await rekeyFolder("", this.root);
+  }
   currentFolder() {
     if (this.path.length <= 0) {
       return this.root;
@@ -712,10 +771,11 @@ var Vault = class _Vault {
       return "linked";
     }
     const id = 1 + await this.root.maxId(this.io);
-    const key = await CryptoKey.generate();
+    const [key, fkey] = await Promise.all([CryptoKey.generate(), CryptoKey.generate()]);
+    const j = fkey.exportUnsafeRaw();
     const filename = `file-${crypto.randomUUID()}.bin`;
-    const { encryptedBytes, iv } = await key.encryptBytes(bytes);
-    const newFile = new VaultFile(id, key, { f: filename, h: hash, v: iv });
+    const { encryptedBytes, iv } = await fkey.encryptBytes(bytes);
+    const newFile = new VaultFile(id, key, { f: filename, h: hash, j, v: iv });
     newFile.dirty = true;
     this.currentFolder().putFile(name, newFile);
     await this.io.write(filename, encryptedBytes);
@@ -777,7 +837,8 @@ var Vault = class _Vault {
       return null;
     }
     const encryptedBytes = await this.io.read(file.metadata.f);
-    const bytes = await file.key.decryptBytes(encryptedBytes, file.metadata.v);
+    const fkey = CryptoKey.importUnsafeRaw(file.metadata.j);
+    const bytes = await fkey.decryptBytes(encryptedBytes, file.metadata.v);
     if (!bytes) {
       return null;
     }
@@ -844,7 +905,7 @@ Current command:`);
     console.log(`
 - chpass <vault> [-p password] [-n newpassword]
 
-  Change vault password
+  Change vault password.
 
   <vault>          Vault directory
   [-p password]    Current password
@@ -854,7 +915,7 @@ Current command:`);
     console.log(`
 - dump <vault> <destination> [-p password]
 
-  Decrypt and copy out entire vault to destination
+  Decrypt and copy out entire vault to destination.
 
   <vault>          Vault directory
   <destination>    Decryption target directory
@@ -864,7 +925,7 @@ Current command:`);
     console.log(`
 - ingest <vault> <source> [-p password]
 
-  Encrypt and copy source folders/files into vault
+  Encrypt and copy source folders/files into vault.
 
   <vault>          Vault directory
   <source>         Source directory
@@ -874,17 +935,31 @@ Current command:`);
     console.log(`
 - init <vault> [-p password] [-d difficulty]
 
-  Initialize a new vault
+  Initialize a new vault.
 
   <vault>          Vault directory
   [-p password]    Encryption password
   [-d difficulty]  Encryption difficulty (default: ${Vault.DEFAULT_DIFFICULTY})`);
   }
+  if (!filter || filter === "rekey") {
+    console.log(`
+- rekey <vault> [-p password] [-a]
+
+  Generates new encryption keys. By default, this will rotate the
+  metadata keys. Use '-a' to rotate the file keys as well, but this
+  will mean re-encrypting all files, which could be expensive.
+
+  Useful for revoking access to all shared links.
+
+  <vault>          Vault directory
+  [-p password]    Encryption password
+  [-a]             Re-encrypt files too`);
+  }
   if (!filter || filter === "rm") {
     console.log(`
 - rm <vault> <path> [-p password]
 
-  Remove a file/folder
+  Remove a file/folder.
 
   <vault>          Vault directory
   <path>           Path of the secure file/folder
@@ -894,13 +969,13 @@ Current command:`);
     console.log(`
 - test
 
-  Run internal tests`);
+  Run internal tests.`);
   }
   if (!filter || filter === "tree") {
     console.log(`
 - tree <vault> [-p password]
 
-  Recursive directory listing
+  Recursive directory listing.
 
   <vault>          Vault directory
   [-p password]    Encryption password`);
@@ -1297,6 +1372,61 @@ Invalid difficulty`);
   ]);
   return 0;
 }
+async function cmdRekey(args) {
+  let target = null;
+  let password = null;
+  let all = false;
+  for (; ; ) {
+    const arg = args.shift();
+    if (typeof arg === "undefined") break;
+    if (arg === "-p") {
+      if (password === null) {
+        const pw = args.shift();
+        if (typeof pw === "undefined") {
+          printUsage("rekey");
+          console.error(`
+Missing password`);
+          return 1;
+        }
+        password = pw;
+      } else {
+        printUsage("rekey");
+        console.error(`
+Cannot specify password more than once`);
+        return 1;
+      }
+    } else if (arg === "-a") {
+      all = true;
+    } else if (target === null) {
+      target = arg;
+    } else {
+      printUsage("rekey");
+      console.error(`
+Unknown argument: ${arg}`);
+      return 1;
+    }
+  }
+  if (target === null) {
+    printUsage("rekey");
+    console.error(`
+Missing vault directory`);
+    return 1;
+  }
+  if (password === null) {
+    password = await promptPassword("Password");
+  }
+  const io = new DirectoryFileIO(target, new NodeFileIO());
+  const root = await io.readString(Vault.ROOT_FILE);
+  const vault = await Vault.deserialize(root, password, io);
+  if (!vault) {
+    console.error(`Wrong password`);
+    return 1;
+  }
+  await vault.rekey(all);
+  await vault.save();
+  await io.writeString(Vault.ROOT_FILE, await vault.serialize(password));
+  return 0;
+}
 async function cmdRm(args) {
   let target = null;
   let spath = null;
@@ -1609,6 +1739,8 @@ async function main(args) {
       return cmdIngest(args);
     case "init":
       return cmdInit(args);
+    case "rekey":
+      return cmdRekey(args);
     case "rm":
       return cmdRm(args);
     case "test":

@@ -310,7 +310,7 @@ var StaticVault = (() => {
       };
     }
     static isMetadata(obj) {
-      return obj !== null && typeof obj === "object" && !Array.isArray(obj) && "f" in obj && typeof obj.f === "string" && "h" in obj && typeof obj.h === "string" && "v" in obj && typeof obj.v === "string";
+      return obj !== null && typeof obj === "object" && !Array.isArray(obj) && "f" in obj && typeof obj.f === "string" && "h" in obj && typeof obj.h === "string" && "j" in obj && typeof obj.j === "string" && "v" in obj && typeof obj.v === "string";
     }
     static async deserialize(id, key, metadata) {
       const obj = await key.decryptObject(metadata);
@@ -597,6 +597,65 @@ var StaticVault = (() => {
       };
       await saveFolder(this.root);
     }
+    async rekey(all = false, silent = false) {
+      const newFiles = /* @__PURE__ */ new Map();
+      const newFolders = /* @__PURE__ */ new Map();
+      const rekeyFile = async (path, file) => {
+        if (!silent) {
+          console.log(path);
+        }
+        file.key = await CryptoKey.generate();
+        file.dirty = true;
+        newFiles.set(file.id, file);
+        if (all) {
+          let fkey = CryptoKey.importUnsafeRaw(file.metadata.j);
+          const oldBytes = await this.io.read(file.metadata.f);
+          const bytes = await fkey.decryptBytes(oldBytes, file.metadata.v);
+          if (!bytes) {
+            if (!silent) {
+              console.warn(`Warning: Failed to decrypt file: ${path} (${file.metadata.f})`);
+            }
+            return;
+          }
+          fkey = await CryptoKey.generate();
+          const { encryptedBytes, iv } = await fkey.encryptBytes(bytes);
+          file.metadata.j = fkey.exportUnsafeRaw();
+          file.metadata.v = iv;
+          await this.io.write(file.metadata.f, encryptedBytes);
+        }
+      };
+      const rekeyFolder = async (path, folder) => {
+        if (!silent && path) {
+          console.log(path);
+        }
+        folder.key = await CryptoKey.generate();
+        folder.dirty = true;
+        newFolders.set(folder.id, folder);
+        for (const name of folder.listFolders()) {
+          const sub = await folder.getFolder(name, this.io);
+          const sub2 = newFolders.get(sub.id);
+          folder.deleteFolder(name);
+          if (sub2) {
+            folder.putFolder(name, sub2);
+          } else {
+            await rekeyFolder(`${path}/${name}`, sub);
+            folder.putFolder(name, sub);
+          }
+        }
+        for (const name of folder.listFiles()) {
+          const file = await folder.getFile(name, this.io);
+          const file2 = newFiles.get(file.id);
+          folder.deleteFile(name);
+          if (file2) {
+            folder.putFile(name, file2);
+          } else {
+            await rekeyFile(`${path}/${name}`, file);
+            folder.putFile(name, file);
+          }
+        }
+      };
+      await rekeyFolder("", this.root);
+    }
     currentFolder() {
       if (this.path.length <= 0) {
         return this.root;
@@ -653,10 +712,11 @@ var StaticVault = (() => {
         return "linked";
       }
       const id = 1 + await this.root.maxId(this.io);
-      const key = await CryptoKey.generate();
+      const [key, fkey] = await Promise.all([CryptoKey.generate(), CryptoKey.generate()]);
+      const j = fkey.exportUnsafeRaw();
       const filename = `file-${crypto.randomUUID()}.bin`;
-      const { encryptedBytes, iv } = await key.encryptBytes(bytes);
-      const newFile = new VaultFile(id, key, { f: filename, h: hash, v: iv });
+      const { encryptedBytes, iv } = await fkey.encryptBytes(bytes);
+      const newFile = new VaultFile(id, key, { f: filename, h: hash, j, v: iv });
       newFile.dirty = true;
       this.currentFolder().putFile(name, newFile);
       await this.io.write(filename, encryptedBytes);
@@ -718,7 +778,8 @@ var StaticVault = (() => {
         return null;
       }
       const encryptedBytes = await this.io.read(file.metadata.f);
-      const bytes = await file.key.decryptBytes(encryptedBytes, file.metadata.v);
+      const fkey = CryptoKey.importUnsafeRaw(file.metadata.j);
+      const bytes = await fkey.decryptBytes(encryptedBytes, file.metadata.v);
       if (!bytes) {
         return null;
       }

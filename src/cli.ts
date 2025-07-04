@@ -29,7 +29,7 @@ function printUsage(filter?: string) {
     console.log(`
 - chpass <vault> [-p password] [-n newpassword]
 
-  Change vault password
+  Change vault password.
 
   <vault>          Vault directory
   [-p password]    Current password
@@ -39,7 +39,7 @@ function printUsage(filter?: string) {
     console.log(`
 - dump <vault> <destination> [-p password]
 
-  Decrypt and copy out entire vault to destination
+  Decrypt and copy out entire vault to destination.
 
   <vault>          Vault directory
   <destination>    Decryption target directory
@@ -49,7 +49,7 @@ function printUsage(filter?: string) {
     console.log(`
 - ingest <vault> <source> [-p password]
 
-  Encrypt and copy source folders/files into vault
+  Encrypt and copy source folders/files into vault.
 
   <vault>          Vault directory
   <source>         Source directory
@@ -59,17 +59,31 @@ function printUsage(filter?: string) {
     console.log(`
 - init <vault> [-p password] [-d difficulty]
 
-  Initialize a new vault
+  Initialize a new vault.
 
   <vault>          Vault directory
   [-p password]    Encryption password
   [-d difficulty]  Encryption difficulty (default: ${Vault.DEFAULT_DIFFICULTY})`);
   }
+  if (!filter || filter === 'rekey') {
+    console.log(`
+- rekey <vault> [-p password] [-a]
+
+  Generates new encryption keys. By default, this will rotate the
+  metadata keys. Use '-a' to rotate the file keys as well, but this
+  will mean re-encrypting all files, which could be expensive.
+
+  Useful for revoking access to all shared links.
+
+  <vault>          Vault directory
+  [-p password]    Encryption password
+  [-a]             Re-encrypt files too`);
+  }
   if (!filter || filter === 'rm') {
     console.log(`
 - rm <vault> <path> [-p password]
 
-  Remove a file/folder
+  Remove a file/folder.
 
   <vault>          Vault directory
   <path>           Path of the secure file/folder
@@ -79,13 +93,13 @@ function printUsage(filter?: string) {
     console.log(`
 - test
 
-  Run internal tests`);
+  Run internal tests.`);
   }
   if (!filter || filter === 'tree') {
     console.log(`
 - tree <vault> [-p password]
 
-  Recursive directory listing
+  Recursive directory listing.
 
   <vault>          Vault directory
   [-p password]    Encryption password`);
@@ -467,6 +481,58 @@ async function cmdInit(args: string[]): Promise<number> {
   return 0;
 }
 
+async function cmdRekey(args: string[]): Promise<number> {
+  let target: string | null = null;
+  let password: string | null = null;
+  let all = false;
+  for (;;) {
+    const arg = args.shift();
+    if (typeof arg === 'undefined') break;
+    if (arg === '-p') {
+      if (password === null) {
+        const pw = args.shift();
+        if (typeof pw === 'undefined') {
+          printUsage('rekey');
+          console.error(`\nMissing password`);
+          return 1;
+        }
+        password = pw;
+      } else {
+        printUsage('rekey');
+        console.error(`\nCannot specify password more than once`);
+        return 1;
+      }
+    } else if (arg === '-a') {
+      all = true;
+    } else if (target === null) {
+      target = arg;
+    } else {
+      printUsage('rekey');
+      console.error(`\nUnknown argument: ${arg}`);
+      return 1;
+    }
+  }
+  if (target === null) {
+    printUsage('rekey');
+    console.error(`\nMissing vault directory`);
+    return 1;
+  }
+  if (password === null) {
+    password = await promptPassword('Password');
+  }
+  const io = new DirectoryFileIO(target, new NodeFileIO());
+  const root = await io.readString(Vault.ROOT_FILE);
+  const vault = await Vault.deserialize(root, password, io);
+  if (!vault) {
+    console.error(`Wrong password`);
+    return 1;
+  }
+  await vault.rekey(all);
+  await vault.save();
+  await io.writeString(Vault.ROOT_FILE, await vault.serialize(password));
+  return 0;
+}
+
 async function cmdRm(args: string[]): Promise<number> {
   let target: string | null = null;
   let spath: string | null = null;
@@ -796,6 +862,8 @@ async function main(args: string[]): Promise<number> {
       return cmdIngest(args);
     case 'init':
       return cmdInit(args);
+    case 'rekey':
+      return cmdRekey(args);
     case 'rm':
       return cmdRm(args);
     case 'test':
