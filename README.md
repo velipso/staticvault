@@ -55,6 +55,14 @@ Change vault password.
 chpass <vault> [-p password] [-n newpassword]
 ```
 
+## `dump`
+
+Decrypt the vault into a directory.
+
+```bash
+npx staticvault dump <vault> <destination> [-p password]
+```
+
 ## `init`
 
 Initialize a new vault.
@@ -69,14 +77,6 @@ Encrypt and add files to an existing vault.
 
 ```bash
 npx staticvault ingest <vault> <source> [-p password]
-```
-
-## `dump`
-
-Decrypt the vault into a directory.
-
-```bash
-npx staticvault dump <vault> <destination> [-p password]
 ```
 
 ## `rekey`
@@ -98,20 +98,20 @@ Remove a file or folder from the vault.
 npx staticvault rm <vault> <path> [-p password]
 ```
 
-## `tree`
-
-List the contents of the vault.
-
-```bash
-npx staticvault tree <vault> [-p password]
-```
-
 ## `test`
 
 Run internal tests.
 
 ```bash
 npx staticvault test
+```
+
+## `tree`
+
+List the contents of the vault.
+
+```bash
+npx staticvault tree <vault> [-p password]
 ```
 
 ## `version`
