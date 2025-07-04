@@ -1,0 +1,1244 @@
+<!doctype html>
+<html lang="en">
+<!--
+staticvault - Encrypt, host, and share files on a static website
+by Sean Connelly (@velipso), https://sean.fun
+Project Home: https://github.com/velipso/staticvault
+SPDX-License-Identifier: 0BSD
+-->
+<head>
+  <script src="./index.min.js"></script>
+  <script>
+//
+// Configure the client-side app:
+//
+var config = {
+  // vault directory (absolute path or relative to this file)
+  vaultDirectory: '.',
+  // which file extensions trigger text preview
+  textModeExtensions: [
+    'txt', 'md', 'markdown', 'js', 'ts', 'tsx', 'jsx', 'c', 'h', 'cpp', 'hpp', 'java', 'py', 'rb',
+    'go', 'rs', 'php', 'html', 'htm', 'css', 'json', 'xml', 'yml', 'yaml', 'sh', 'bat', 'fish',
+    'csv'
+  ],
+  // initial wrapping mode when previewing a text file
+  wrapText: false,
+  // which file extensions trigger image preview and their associated MIMEs
+  imageMIMEs: {
+    png: 'image/png',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    gif: 'image/gif',
+    svg: 'image/svg+xml',
+    webp: 'image/webp',
+    bmp: 'image/bmp',
+    ico: 'image/x-icon',
+    tiff: 'image/tiff',
+    tif: 'image/tiff',
+    avif: 'image/avif'
+  },
+  // initial pixelation mode when previewing an image file
+  pixelate: false,
+  // how many files to keep in memory
+  cacheMaxFiles: 100
+};
+  </script>
+  <title>StaticVault</title>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+  <meta name="viewport" content="width=device-width,minimum-scale=1" />
+  <style>
+html, body {
+  font-family: sans-serif;
+  margin: 0;
+  padding: 0;
+  background-color: #ddd;
+  color: #444;
+  height: 100%;
+  font-size: 18px;
+}
+* {
+  box-sizing: border-box;
+}
+input, button {
+  font-size: 18px;
+}
+button {
+  color: #111;
+  cursor: pointer;
+  user-select: none;
+  padding: 8px;
+  font-family: sans-serif;
+  line-height: 1;
+}
+input {
+  padding: 8px;
+  border-radius: 5px;
+  border: 1px solid #888;
+  font-family: sans-serif;
+  line-height: 1;
+}
+#password-submit {
+  padding: 8px;
+  border-radius: 5px;
+  background-color: #ddd;
+  border: 1px solid #888;
+}
+#password-submit span {
+  display: inline-block;
+  transform: translateY(1.5px);
+}
+*:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+#password {
+  display: flex;
+  flex-flow: row;
+  justify-content: center;
+}
+#password-wrong {
+  color: #a00;
+}
+#password-wrap {
+  display: block;
+  flex: none;
+  margin: 20px;
+  padding: 20px;
+  border: 1px solid #aaa;
+  background-color: #fff;
+  border-radius: 10px;
+  box-shadow: 0px 3px 4px 0px #00000033;
+}
+#password-wrap input {
+  width: 250px;
+}
+#password-wrap p {
+  text-align: center;
+}
+#password-wrap p:first-child {
+  margin-top: 0;
+}
+#password-wrap p:last-child {
+  margin-bottom: 0;
+}
+#app {
+  display: flex;
+  flex-flow: column nowrap;
+  height: 100%;
+}
+#header {
+  padding: 10px;
+  flex: none;
+  display: flex;
+  flex-flow: row wrap;
+  background-color: #fff;
+  border-bottom: 1px solid #aaa;
+  box-shadow: 0px 0px 4px 0px #00000033;
+}
+#breadcrumbs {
+  flex: auto;
+  display: flex;
+  flex-flow: row wrap;
+}
+.crumb {
+  flex: none;
+  border: none;
+  background-color: transparent;
+  display: flex;
+  flex-flow: row nowrap;
+  border-radius: 5px;
+  gap: 5px;
+  user-select: none;
+  margin: 0 0 0 5px;
+  padding: 0 10px 0 5px;
+  text-align: start;
+}
+.crumb.shared {
+  background-color: rgb(194, 231, 255);
+}
+button.crumb {
+  cursor: pointer;
+}
+button.crumb:hover {
+  background-color: #00000011;
+}
+button.crumb.shared:hover {
+  background-color: rgb(189, 226, 250);
+}
+.crumb > svg {
+  margin: 4px 0;
+  width: 24px;
+  height: 24px;
+}
+.crumb > span {
+  padding: 4px 0;
+  line-height: 24px;
+  transform: translateY(1.5px);
+}
+#breadcrumbs .divider {
+  padding: 4px 0;
+  line-height: 24px;
+  height: 32px;
+  margin: 0;
+  user-select: none;
+  flex: none;
+  font-family: monospace;
+  font-size: 20px;
+}
+#tools {
+  flex: auto;
+  justify-content: end;
+  display: flex;
+  flex-flow: row wrap;
+  gap: 8px;
+}
+#tools > button {
+  background-color: transparent;
+  border: 1px solid #bbb;
+  border-radius: 5px;
+  width: 32px;
+  height: 32px;
+  padding: 3px;
+  text-align: center;
+  font-family: monospace;
+}
+#tools > button:hover {
+  background-color: #00000011;
+}
+#tools > button.active {
+  background-color: rgb(194, 231, 255);
+  border-color: rgb(164, 201, 225);
+}
+#tools > button.active:hover {
+  background-color: #00000011;
+  border-color: #999;
+}
+#tools > button.active:hover {
+  background-color: rgb(189, 226, 250);
+  border-color: rgb(159, 196, 220);
+}
+#tools > button > svg {
+  width: 24px;
+  height: 24px;
+}
+#content {
+  flex: auto;
+}
+#preview {
+  flex: 1 1 0%;
+  min-height: 0;
+  display: flex;
+  flex-flow: row nowrap;
+  padding-top: 10px;
+}
+#preview .inner {
+  flex: 1 1 0;
+  display: flex;
+  flex-flow: column nowrap;
+  overflow: hidden;
+  background-color: #fff;
+  box-shadow: 0px 0px 4px 0px #00000033;
+  border: 1px solid transparent;
+  min-height: 0;
+  height: 100%;
+  gap: 10px;
+}
+#preview.p-image .inner {
+  padding: 10px;
+}
+#preview.p-image .inner .img {
+  flex: auto;
+  display: flex;
+  overflow: hidden;
+}
+#preview.p-text .inner .img {
+  flex: auto;
+  overflow: auto;
+}
+#preview .inner .img img {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.loading {
+  margin: 20px;
+  text-align: center;
+  opacity: 0.1;
+}
+@keyframes rotate {
+  100% {
+    transform: rotate(360deg);
+  }
+}
+.loading > svg {
+  width: 50px;
+  height: 50px;
+  animation: rotate 8s linear infinite;
+}
+.items {
+  margin: 10px 10px 20px;
+  display: grid;
+  flex-flow: row wrap;
+  grid-template-columns: repeat(auto-fit, 300px);
+  justify-content: center;
+  row-gap: 10px;
+  gap: 10px;
+}
+.grid-break {
+  grid-column: 1 / -1;
+}
+#share-content > .items {
+  margin: 20px 0 0 0;
+  justify-content: center;
+}
+#share-content h1 {
+  font-size: 24px;
+  font-weight: normal;
+}
+#share-content p,
+#share-content a {
+  margin: 10px 0;
+  display: block;
+  line-height: 1.25;
+  font-size: 18px;
+  padding: 10px;
+}
+.item {
+  flex: none;
+  display: flex;
+  flex-flow: column nowrap;
+  gap: 10px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  padding: 10px;
+  box-shadow: 0px 0px 4px 0px #00000011;
+  background-color: rgb(240, 244, 249);
+}
+#share-content .item {
+  border-color: #ddd;
+}
+button.item:hover {
+  background-color: rgb(235, 239, 244);
+}
+#share-content .item.shared,
+.item.shared {
+  background-color: rgb(194, 231, 255);
+  border-color: rgb(164, 201, 225);
+}
+button.item.shared:hover {
+  background-color: rgb(189, 226, 250);
+  border-color: rgb(159, 196, 220);
+}
+.item > .nav {
+  flex: none;
+  display: flex;
+  flex-flow: row nowrap;
+  gap: 5px;
+}
+.item > .nav > button {
+  display: flex;
+  flex-flow: row wrap;
+  gap: 5px;
+}
+.item > .nav > svg {
+  flex: none;
+  width: 24px;
+}
+.item > .nav > span {
+  flex: none;
+  width: 220px;
+  text-align: left;
+  overflow: hidden;
+  word-wrap: break-word;
+  line-height: 24px;
+  transform: translateY(1.5px);
+}
+.item > .nav > button {
+  background-color: transparent;
+  border: none;
+  height: 32px;
+  width: 32px;
+  padding: 4px;
+  margin: -4px;
+  flex: none;
+  border-radius: 999px;
+}
+.item > .nav > button:hover {
+  background-color: #00000011;
+}
+.item > svg {
+  width: 278px;
+  height: 278px;
+  opacity: 0.1;
+}
+.item > img {
+  width: 278px;
+}
+.scroll-lock {
+  overflow: hidden;
+}
+#share-bg {
+  position: fixed;
+  inset: 0px;
+  touch-action: none;
+  cursor: pointer;
+  user-select: none;
+  z-index: 7;
+  background-color: #00000077;
+}
+#share {
+  position: fixed;
+  inset: 0px;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#share-modal {
+  display: flex;
+  flex-flow: column nowrap;
+  position: relative;
+  padding: 10px 0;
+  margin: 5px;
+  width: 100%;
+  height: 100%;
+  max-height: min(590px, calc(100% - 10px));
+  overflow: hidden;
+  max-width: 630px;
+  background-color: #fff;
+  text-align: center;
+  border-radius: 20px;
+  box-shadow: rgba(0, 0, 0, 0.1) 0px 1px 3px 0px, rgba(0, 0, 0, 0.1) 0px 1px 2px -1px;
+}
+#share-close {
+  background-color: #ffffff77;
+  border: none;
+  position: absolute;
+  top: calc(50% - 290px);
+  margin: 0;
+  padding: 0;
+  line-height: 40px;
+  font-size: 20px;
+  text-align: center;
+  user-select: none;
+  cursor: pointer;
+  right: calc(50% - 310px);
+  width: 40px;
+  height: 40px;
+  border-radius: 15px;
+  z-index: 9;
+}
+#share-close:hover {
+  background-color: #00000011;
+}
+@media (max-height: 600px) {
+  #share-close {
+    top: 10px;
+  }
+}
+@media (max-width: 640px) {
+  #share-close {
+    right: 10px;
+  }
+}
+#share-content {
+  flex: auto;
+  overflow: auto;
+}
+#share-nav {
+  flex: none;
+}
+#share-nav button {
+  border: 1px solid #888;
+  background-color: #fff;
+  padding: 12px 30px 8px;
+  margin: 10px;
+  border-radius: 999px;
+}
+#share-nav button:hover {
+  background-color: #00000011;
+}
+@media (min-width: 401px) {
+  .shrink-replace {
+    display: none;
+  }
+}
+@media (max-width: 400px) {
+  .shrink {
+    display: none;
+  }
+  #password-wrap input {
+    width: 150px;
+  }
+}
+  </style>
+<head>
+<body>
+  <div id="loading">
+    <p>Loading...</p>
+  </div>
+  <div id="password" style="display: none;">
+    <form
+      id="password-wrap"
+      onSubmit="try { submitPassword(); } catch (err) { console.error(err); } return false;"
+    >
+      <p>Enter Password:</p>
+      <p id="password-wrong" style="display: none;">Wrong password. Try again.</p>
+      <p>
+        <input type="password" id="password-input" autofocus />
+        <button type="submit" id="password-submit"><span>Submit</span></button>
+      </p>
+    </form>
+  </div>
+  <div id="share-bg" style="display: none;"></div>
+  <div id="share" style="display: none;">
+    <button id="share-close" type="button" onClick="share(false);">&times;</button>
+    <div id="share-modal">
+      <div id="share-content"></div>
+      <div id="share-nav"></div>
+    </div>
+  </div>
+  <div id="app" style="display: none;">
+    <div id="header">
+      <div id="breadcrumbs"></div>
+      <div id="tools"></div>
+    </div>
+    <div id="content">
+    </div>
+    <div id="preview" style="display: none;">
+    </div>
+  </div>
+  <script>
+const svg = (strs) => {
+  const parser = new DOMParser();
+  const node = parser.parseFromString(strs.join(''), 'image/svg+xml').documentElement;
+  return () => node.cloneNode(true);
+};
+const loadingSVG = svg([
+  `<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" `,
+  `fill="#444444"><path d="M482-160q-134 0-228-93t-94-227v-7l-64 64-56-56 160-160 160 160-56 `,
+  `56-64-64v7q0 100 70.5 170T482-240q26 0 51-6t49-18l60 60q-38 22-78 33t-82 `,
+  `11Zm278-161L600-481l56-56 64 64v-7q0-100-70.5-170T478-720q-26 0-51 6t-49 18l-60-60q38-22 `,
+  `78-33t82-11q134 0 228 93t94 227v7l64-64 56 56-160 160Z"/></svg>`
+]);
+const fileSVG = svg([
+  `<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" `,
+  `fill="#444444"><path d="M240-80q-33 0-56.5-23.5T160-160v-640q0-33 23.5-56.5T240-880h320l240 `,
+  `240v480q0 33-23.5 56.5T720-80H240Zm280-520v-200H240v640h480v-440H520ZM240-800v200-200 `,
+  `640-640Z"/></svg>`
+]);
+const textSVG = svg([
+  `<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" `,
+  `fill="#444444"><path d="M320-440h320v-80H320v80Zm0 120h320v-80H320v80Zm0 `,
+  `120h200v-80H320v80ZM240-80q-33 0-56.5-23.5T160-160v-640q0-33 23.5-56.5T240-880h320l240 `,
+  `240v480q0 33-23.5 56.5T720-80H240Zm280-520v-200H240v640h480v-440H520ZM240-800v200-200 `,
+  `640-640Z"/></svg>`
+]);
+const folderSVG = svg([
+  `<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" `,
+  `fill="#444444"><path d="M160-160q-33 0-56.5-23.5T80-240v-480q0-33 23.5-56.5T160-800h240l80 `,
+  `80h320q33 0 56.5 23.5T880-640v400q0 33-23.5 `,
+  `56.5T800-160H160Zm0-80h640v-400H447l-80-80H160v480Zm0 0v-480 480Z"/></svg>`
+]);
+const imageSVG = svg([
+  `<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" `,
+  `fill="#444444"><path d="M200-120q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h560q33 0 `,
+  `56.5 23.5T840-760v560q0 33-23.5 56.5T760-120H200Zm0-80h560v-560H200v560Zm40-80h480L570-480 `,
+  `450-320l-90-120-120 160Zm-40 80v-560 560Z"/></svg>`
+]);
+const shareSVG = svg([
+  `<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" `,
+  `fill="#444444"><path d="M40-160v-112q0-34 17.5-62.5T104-378q62-31 126-46.5T360-440q66 0 130 `,
+  `15.5T616-378q29 15 46.5 43.5T680-272v112H40Zm720 0v-120q0-44-24.5-84.5T666-434q51 6 96 20.5t84 `,
+  `35.5q36 20 55 44.5t19 53.5v120H760ZM360-480q-66 0-113-47t-47-113q0-66 47-113t113-47q66 0 113 `,
+  `47t47 113q0 66-47 113t-113 47Zm400-160q0 66-47 113t-113 47q-11 0-28-2.5t-28-5.5q27-32 `,
+  `41.5-71t14.5-81q0-42-14.5-81T544-792q14-5 28-6.5t28-1.5q66 0 113 47t47 `,
+  `113ZM120-240h480v-32q0-11-5.5-20T580-306q-54-27-109-40.5T360-360q-56 0-111 13.5T140-306q-9 `,
+  `5-14.5 14t-5.5 20v32Zm240-320q33 0 56.5-23.5T440-640q0-33-23.5-56.5T360-720q-33 0-56.5 `,
+  `23.5T280-640q0 33 23.5 56.5T360-560Zm0 320Zm0-400Z"/></svg>`
+]);
+const checkOutlineSVG = svg([
+  `<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" `,
+  `fill="#aaaaaa"><path d="M200-120q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h560q33 0 `,
+  `56.5 23.5T840-760v560q0 33-23.5 56.5T760-120H200Zm0-80h560v-560H200v560Z"/></svg>`
+]);
+const checkCheckedSVG = svg([
+  `<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" `,
+  `fill="#444444"><path d="m424-312 282-282-56-56-226 226-114-114-56 56 170 170ZM200-120q-33 `,
+  `0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h560q33 0 56.5 23.5T840-760v560q0 33-23.5 `,
+  `56.5T760-120H200Zm0-80h560v-560H200v560Zm0-560v560-560Z"/></svg>`
+]);
+const wrapSVG = svg([
+  `<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" `,
+  `fill="#444444"><path d="M160-160v-640h80v640h-80Zm560 `,
+  `0v-640h80v640h-80Zm-296-98L282-400l142-141 56 56-45 45h85q33 0 `,
+  `56.5-23.5T600-520q0-33-23.5-56.5T520-600H280v-80h240q66 0 113 47t47 113q0 66-47 113t-113 `,
+  `47h-85l45 45-56 57Z"/></svg>`
+]);
+const prevSVG = svg([
+  `<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" `,
+  `fill="#444444"><path d="M560-280 360-480l200-200v400Z"/></svg>`
+]);
+const nextSVG = svg([
+  `<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" `,
+  `fill="#1f1f1f"><path d="M400-280v-400l200 200-200 200Z"/></svg>`
+]);
+const downloadSVG = svg([
+  `<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" `,
+  `fill="#444444"><path d="M480-320 280-520l56-58 104 104v-326h80v326l104-104 56 58-200 `,
+  `200ZM240-160q-33 0-56.5-23.5T160-240v-120h80v120h480v-120h80v120q0 33-23.5 `,
+  `56.5T720-160H240Z"/></svg>`
+]);
+const pixelSVG = svg([
+  `<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" `,
+  `fill="#444444"><path d="M280-280h160v-160H280v160Zm240 `,
+  `0h160v-160H520v160ZM280-520h160v-160H280v160Zm240 0h160v-160H520v160ZM200-120q-33 `,
+  `0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h560q33 0 56.5 23.5T840-760v560q0 33-23.5 `,
+  `56.5T760-120H200Zm0-80h560v-560H200v560Zm0-560v560-560Z"/></svg>`
+]);
+
+const {
+  CacheFileIO,
+  DirectoryFileIO,
+  BrowserFileIO,
+  Vault
+} = StaticVault;
+
+let shareList = [];
+let onShareListChange = () => {};
+let vault = null;
+const io = new CacheFileIO(
+  config.cacheMaxFiles,
+  new DirectoryFileIO(config.vaultDirectory, new BrowserFileIO())
+);
+
+function $(id) {
+  return document.getElementById(id);
+}
+
+function $c(tag, attrs) {
+  const c = document.createElement(tag);
+  if (attrs) {
+    for (const [k, v] of Object.entries(attrs)) {
+      c[k] = v;
+    }
+  }
+  return c;
+}
+
+function $t(text) {
+  return document.createTextNode(text);
+}
+
+function getExt(n) {
+  const name = n.toLowerCase();
+  const d = name.lastIndexOf('.');
+  if (d < 0) {
+    return '';
+  }
+  return name.substr(d + 1);
+}
+
+function downloadFile(filename, bytes) {
+  const blob = new Blob(
+    [bytes],
+    { type: getExt(filename) === 'pdf' ? 'application/pdf' : 'application/octet-stream' }
+  );
+  const url = URL.createObjectURL(blob);
+  const a = $c('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function loadImage(filename, bytes, img) {
+  img = img || $c('img');
+  const blob = new Blob([bytes], { type: config.imageMIMEs[getExt(filename)] });
+  const url = URL.createObjectURL(blob);
+  img.src = url;
+  img.onload = () => URL.revokeObjectURL(url);
+}
+
+function makeItem(kind, name, currentPath, onClick) {
+  const itemPath = (currentPath === '/' ? '' : currentPath) + '/' + name;
+  const shareIndex = () =>
+    shareList.findIndex(s => s.kind === kind && s.itemPath === itemPath);
+  const main = onClick
+    ? $c('button', { type: 'button', className: 'item' })
+    : $c('div', { className: 'item' });
+  if (onClick) {
+    main.addEventListener('click', onClick);
+  }
+
+  const ext = getExt(name);
+  const nav = $c('div', { className: 'nav' });
+  nav.appendChild(
+    kind === 'folder'
+    ? folderSVG()
+    : ext in config.imageMIMEs
+    ? imageSVG()
+    : config.textModeExtensions.indexOf(ext) >= 0
+    ? textSVG()
+    : fileSVG()
+  );
+
+  const span = $c('span');
+  span.appendChild($t(name));
+  nav.appendChild(span);
+
+  const share = $c('button', { type: 'button' });
+  if (shareIndex() >= 0) {
+    main.classList.add('shared');
+    share.appendChild(checkCheckedSVG());
+  } else {
+    share.appendChild(checkOutlineSVG());
+  }
+  share.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const i = shareIndex();
+    if (i >= 0) {
+      // unshare
+      shareList.splice(i, 1);
+      if (shareList.length <= 0) {
+        const b = $('share-button');
+        b.className = '';
+        b.disabled = true;
+      }
+      main.classList.remove('shared');
+      share.innerHTML = '';
+      share.appendChild(checkOutlineSVG());
+      onShareListChange();
+    } else {
+      // share
+      if (shareList.length <= 0) {
+        const b = $('share-button');
+        b.className = 'active';
+        b.disabled = false;
+      }
+      shareList.push({ kind, currentPath, name, itemPath });
+      main.classList.add('shared');
+      share.innerHTML = '';
+      share.appendChild(checkCheckedSVG());
+      onShareListChange();
+    }
+  });
+  nav.appendChild(share);
+  main.appendChild(nav);
+
+  return main;
+}
+
+function showBreadcrumbs(lastItem) {
+  const bc = $('breadcrumbs');
+  bc.innerHTML = '';
+  const addCrumb = (icon, name, onClick) => {
+    const crumb = onClick
+      ? $c('button', { type: 'button', className: 'crumb' })
+      : $c('div', { className: 'crumb' });
+    if (onClick) {
+      crumb.addEventListener('click', onClick);
+    }
+    if (icon) {
+      crumb.appendChild(icon);
+    }
+    const span = $c('span');
+    span.appendChild($t(name));
+    crumb.appendChild(span);
+    bc.appendChild(crumb);
+    return crumb;
+  };
+  const addDivider = () => {
+    const d = $c('div', { className: 'divider' });
+    d.appendChild($t('›'));
+    bc.appendChild(d);
+    return d;
+  };
+  const vpath = vault.getPath();
+  const path = vpath === '/' ? [] : vpath.substr(1).split('/');
+  addCrumb(folderSVG(), 'Home', path.length <= 0 && !lastItem ? false : () => {
+    vault.exitToRoot();
+    showFolder();
+  });
+  let folderPath = '';
+  if (path.length + (lastItem ? 1 : 0) > 2) {
+    const d = addDivider();
+    const c = addCrumb(null, '...');
+    d.classList.add('shrink-replace');
+    c.classList.add('shrink-replace');
+  }
+  for (let i = 0; i < path.length; i++) {
+    folderPath += '/' + path[i];
+    const d = addDivider();
+    const c = addCrumb(folderSVG(), path[i], i >= path.length - 1 && !lastItem ? false : () => {
+      while (path.length > i + 1) {
+        path.pop();
+        vault.exitFolder();
+      }
+      showFolder();
+    });
+    if (i < path.length - (lastItem ? 1 : 2)) {
+      d.classList.add('shrink');
+      c.classList.add('shrink');
+    }
+    if (shareList.find(s => s.kind === 'folder' && s.itemPath === folderPath)) {
+      c.classList.add('shared');
+    }
+  }
+  if (lastItem) {
+    addDivider();
+    const c = addCrumb(lastItem.icon, lastItem.name);
+    const currentPath = vault.getPath();
+    const itemPath = (currentPath === '/' ? '' : currentPath) + '/' + lastItem.name;
+    if (shareList.find(s => s.kind === 'file' && s.itemPath === itemPath)) {
+      c.classList.add('shared');
+    }
+  }
+}
+
+function showTools(handlers) {
+  const tools = $('tools');
+  tools.innerHTML = '';
+  const addButton = (id, content, onClick) => {
+    const b = $c('button', { type: 'button' });
+    b.setAttribute('id', id);
+    b.appendChild(content);
+    if (typeof onClick === 'function') {
+      b.addEventListener('click', onClick);
+    }
+    tools.appendChild(b);
+    return b;
+  };
+  if (handlers.onWrap) {
+    const b = addButton('wrap-button', wrapSVG(), handlers.onWrap);
+    if (config.wrapText) {
+      b.className = 'active';
+    }
+  }
+  if (handlers.onPixel) {
+    const b = addButton('pixel-button', pixelSVG(), handlers.onPixel);
+    if (config.pixelate) {
+      b.className = 'active';
+    }
+  }
+  if (handlers.onPrev) {
+    addButton('prev-button', prevSVG(), handlers.onPrev);
+  }
+  if (handlers.onNext) {
+    addButton('next-button', nextSVG(), handlers.onNext);
+  }
+  if (handlers.onDownload) {
+    addButton('download-button', downloadSVG(), handlers.onDownload);
+  }
+  if (handlers.onClose) {
+    addButton('close-button', $t('×'), handlers.onClose);
+  }
+  if (handlers.onShare) {
+    const b = addButton('share-button', shareSVG(), handlers.onShare);
+    if (shareList.length > 0) {
+      b.className = 'active';
+    } else {
+      b.disabled = true;
+    }
+  }
+}
+
+function showPreview(classExt, showFunc, items, index, prevIndex, nextIndex, icon, onLoad, tools) {
+  const name = items[index];
+  showBreadcrumbs({ name, icon });
+  showTools({
+    onPrev: () => { showFunc(items, prevIndex); },
+    onNext: () => { showFunc(items, nextIndex); },
+    onDownload: true,
+    onClose: showFolder,
+    ...tools
+  });
+  $('prev-button').disabled = prevIndex < 0;
+  $('next-button').disabled = nextIndex < 0;
+  $('content').style.display = 'none';
+  const preview = $('preview');
+  preview.className = classExt;
+  preview.style.display = '';
+  preview.innerHTML = '';
+  const itemPath = vault.getPath() + '/' + name;
+  const isShared = !!shareList.find(s => s.kind === 'file' && s.itemPath === itemPath);
+  const div = $c('div', { className: 'inner' + (isShared ? ' shared' : '') });
+  const dimg = $c('div', { className: 'img' });
+  const loading = $c('div', { className: 'loading' });
+  loading.style.margin = '';
+  loading.style.width = '100%';
+  loading.style.height = '100%';
+  loading.style.display = 'flex';
+  loading.style.justifyContent = 'center';
+  loading.style.alignItems = 'center';
+  const svg = loadingSVG();
+  svg.style.width = '50%';
+  svg.style.height = '50%';
+  loading.appendChild(svg);
+  dimg.appendChild(loading);
+  vault.getFile(name).then(bytes => {
+    $('download-button').addEventListener('click', () => {
+      downloadFile(name, bytes);
+    });
+    dimg.removeChild(loading);
+    dimg.appendChild(onLoad(bytes));
+  });
+  div.appendChild(dimg);
+  preview.appendChild(div);
+}
+
+function setPixelate(img) {
+  if (!img) return;
+  img.style.imageRendering = config.pixelate ? 'pixelated' : '';
+}
+
+function showImagePreview(images, index) {
+  let img = null;
+  showPreview(
+    'p-image',
+    showImagePreview,
+    images,
+    index,
+    index > 0 ? index - 1 : -1,
+    index < images.length - 1 ? index + 1 : -1,
+    imageSVG(),
+    bytes => {
+      img = $c('img');
+      setPixelate(img);
+      loadImage(name, bytes, img);
+      return img;
+    },
+    {
+      onPixel: () => {
+        config.pixelate = !config.pixelate;
+        $('pixel-button').className = config.pixelate ? 'active' : '';
+        setPixelate(img);
+      }
+    }
+  );
+}
+
+function showTextPreview(others, index) {
+  let prevI = -1;
+  for (let i = index - 1; i >= 0 && prevI < 0; i--) {
+    if (config.textModeExtensions.indexOf(getExt(others[i])) >= 0) {
+      prevI = i;
+    }
+  }
+  let nextI = -1;
+  for (let i = index + 1; i < others.length && nextI < 0; i++) {
+    if (config.textModeExtensions.indexOf(getExt(others[i])) >= 0) {
+      nextI = i;
+    }
+  }
+  const setWrap = (pre) => {
+    if (!pre) return;
+    if (config.wrapText) {
+      pre.style.whiteSpace = 'pre-wrap';
+      pre.style.wordBreak = 'break-word';
+    } else {
+      pre.style.whiteSpace = '';
+      pre.style.wordBreak = 'normal';
+    }
+  };
+  showPreview(
+    'p-text',
+    showTextPreview,
+    others,
+    index,
+    prevI,
+    nextI,
+    textSVG(),
+    bytes => {
+      const pre = $c('pre');
+      pre.setAttribute('id', 'text-preview');
+      pre.style.margin = '10px';
+      pre.style.display = 'block';
+      setWrap(pre);
+      pre.innerText = new TextDecoder().decode(bytes);
+      return pre;
+    },
+    {
+      onWrap: () => {
+        config.wrapText = !config.wrapText;
+        $('wrap-button').className = config.wrapText ? 'active' : '';
+        setWrap($('text-preview'));
+      }
+    }
+  );
+}
+
+function showFolder() {
+  showBreadcrumbs();
+  showTools({
+    onShare: () => {
+      share(true);
+    }
+  });
+  $('preview').style.display = 'none';
+  const con = $('content');
+  con.style.display = '';
+  con.innerHTML = '';
+  const folders = vault.listFolders();
+  const currentPath = vault.getPath();
+  const items = $c('div', { className: 'items' });
+  let needBreak = false;
+  if (folders.length > 0) {
+    needBreak = true;
+    for (const name of folders) {
+      items.appendChild(makeItem('folder', name, currentPath, async () => {
+        con.innerHTML = '';
+        const div = $c('div', { className: 'loading' });
+        div.appendChild(loadingSVG());
+        con.appendChild(div);
+        await vault.enterFolder(name);
+        showFolder();
+      }));
+    }
+  }
+  const others = [];
+  const images = [];
+  for (const name of vault.listFiles()) {
+    if (getExt(name) in config.imageMIMEs) {
+      images.push(name);
+    } else {
+      others.push(name);
+    }
+  }
+  if (others.length > 0) {
+    if (needBreak) {
+      items.appendChild($c('div', { className: 'grid-break' }));
+    }
+    needBreak = true;
+    for (let i = 0; i < others.length; i++) {
+      const name = others[i];
+      items.appendChild(makeItem('file', name, currentPath, async () => {
+        if (config.textModeExtensions.indexOf(getExt(name)) >= 0) {
+          showTextPreview(others, i);
+        } else {
+          vault.getFile(name).then(bytes => {
+            downloadFile(name, bytes);
+          });
+        }
+      }));
+    }
+  }
+  if (images.length > 0) {
+    if (needBreak) {
+      items.appendChild($c('div', { className: 'grid-break' }));
+    }
+    needBreak = true;
+    for (let i = 0; i < images.length; i++) {
+      const name = images[i];
+      const item = makeItem('file', name, currentPath, async () => {
+        showImagePreview(images, i);
+      });
+      const loading = loadingSVG();
+      item.appendChild(loading);
+      vault.getFile(name).then(bytes => {
+        item.removeChild(loading);
+        const img = $c('img');
+        loadImage(name, bytes, img);
+        item.appendChild(img);
+      });
+      items.appendChild(item);
+    }
+  }
+  if (needBreak) {
+    // got items
+    con.appendChild(items);
+  } else {
+    // no items :-(
+    const p = $c('p');
+    p.style.textAlign = 'center';
+    p.style.margin = '40px';
+    p.innerText = 'Empty';
+    con.appendChild(p);
+  }
+  con.appendChild(footer());
+}
+
+function submitPassword() {
+  const inp = $('password-input');
+  const sub = $('password-submit');
+  const bad = $('password-wrong');
+  if (sub.disabled) {
+    return;
+  }
+  bad.style.display = 'none';
+  inp.disabled = true;
+  sub.disabled = true;
+
+  const password = inp.value;
+  let root = decodeURIComponent(location.hash.substr(1));
+  if (root) {
+    root = Promise.resolve(root);
+  } else {
+    root = io.readString('securevault.txt')
+  }
+  root.then(async (root) => {
+    vault = await Vault.deserialize(root, password, io);
+    if (!vault) {
+      bad.style.display = '';
+      inp.disabled = false;
+      inp.value = '';
+      inp.focus();
+      return;
+    }
+    $('password').style.display = 'none';
+    $('app').style.display = '';
+    $('footer').remove();
+    showFolder();
+  }).catch((err) => {
+    console.error(err);
+  }).then(() => {
+    inp.disabled = false;
+    sub.disabled = false;
+  });
+}
+
+function share(show) {
+  if (!show) {
+    onShareListChange = () => {};
+    document.body.classList.remove('scroll-lock');
+    $('share-bg').style.display = 'none';
+    $('share').style.display = 'none';
+    showFolder();
+    return;
+  }
+  document.body.classList.add('scroll-lock');
+  $('share-bg').style.display = '';
+  $('share').style.display = '';
+  const sc = $('share-content');
+  sc.innerHTML = '<h1>Share Access</h1>';
+  const folders = shareList.filter(f => f.kind === 'folder');
+  const files = shareList.filter(f => f.kind === 'file');
+  const items = $c('div', { className: 'items' });
+  if (folders.length > 0) {
+    for (const s of folders) {
+      items.appendChild(makeItem('folder', s.name, s.currentPath));
+    }
+  }
+  if (files.length > 0) {
+    if (folders.length > 0) {
+      items.appendChild($c('div', { className: 'grid-break' }));
+    }
+    for (const s of files) {
+      items.appendChild(makeItem('file', s.name, s.currentPath));
+    }
+  }
+  sc.appendChild(items);
+
+  const sn = $('share-nav')
+  sn.innerHTML = '';
+  const cancel = $c('button', { type: 'button' });
+  cancel.appendChild($t('Cancel'));
+  cancel.addEventListener('click', () => { share(false); });
+  sn.appendChild(cancel);
+  const next = $c('button', { type: 'button' });
+  next.appendChild($t('Next'));
+  next.disabled = shareList.length <= 0;
+  onShareListChange = () => next.disabled = shareList.length <= 0;
+  const setPassword = () => {
+    if (shareList.length <= 0) return;
+
+    // show password prompt
+    next.removeEventListener('click', setPassword);
+    onShareListChange = () => {};
+    sc.innerHTML = '<h1>Password</h1>';
+    const p = $c('p');
+    p.innerText = 'Choose a new secure password:';
+    sc.appendChild(p);
+    const warn = $c('p');
+    warn.style.display = 'none';
+    warn.innerHTML = 'Do not use your password!<br/>Pick a new one!';
+    next.disabled = true;
+    const performShare = async () => {
+      // share finished!
+      next.remove();
+      sc.innerHTML = '<h1>Share Link</h1>';
+      const p = $c('p');
+      p.innerText = 'Share the new password and this link with your friend:';
+      sc.appendChild(p);
+      const loading = $c('div', { className: 'loading' });
+      loading.appendChild(loadingSVG());
+      sc.appendChild(loading);
+      cancel.innerText = 'Close';
+      const nv = await Vault.create(io);
+      for (const sh of shareList) {
+        switch (sh.kind) {
+          case 'folder':
+            await nv.putFolderLink(sh.name, sh.itemPath, vault);
+            break;
+          case 'file':
+            await nv.putFileLink(sh.name, sh.itemPath, vault);
+            break;
+        }
+      }
+      const ser = await nv.serialize(pw.value, vault.difficulty);
+      const href = location.href.split('#')[0] + '#' + encodeURIComponent(ser);
+      loading.remove();
+      const a = $c('a');
+      a.style.fontFamily = 'monospace';
+      a.style.wordBreak = 'break-all';
+      a.style.textAlign = 'left';
+      a.href = href;
+      a.target ='_blank';
+      a.innerText = href;
+      sc.appendChild(a);
+    };
+    const form = $c('form');
+    form.style.display = 'block';
+    form.style.margin = '0';
+    form.style.padding = '0';
+    form.addEventListener('submit', () => {
+      performShare();
+      return false;
+    });
+    const pw = $c('input', { type: 'password' });
+    pw.addEventListener('input', () => {
+      if (pw.value === $('password-input').value) {
+        next.disabled = true;
+        warn.style.display = '';
+      } else {
+        next.disabled = !pw.value;
+      }
+    });
+    form.appendChild(pw);
+    sc.appendChild(form);
+    sc.appendChild(warn);
+    pw.focus();
+    next.addEventListener('click', performShare);
+  };
+  next.addEventListener('click', setPassword);
+  sn.appendChild(next);
+}
+
+function footer() {
+  const p = $c('p');
+  p.setAttribute('id', 'footer');
+  p.style.textAlign = 'center';
+  p.style.fontSize = '16px';
+  p.style.opacity = '0.5';
+  p.style.margin = '40px 10px 10px';
+  const a = $c('a');
+  a.href = 'https://github.com/velipso/staticvault';
+  a.target = '_blank';
+  a.innerText = 'StaticVault';
+  p.innerText = 'Created using ';
+  p.appendChild(a);
+  return p;
+}
+
+window.addEventListener('load', () => {
+  $('loading').style.display = 'none';
+  $('password').style.display = '';
+  $('password-input').focus();
+  document.body.appendChild(footer());
+});
+  </script>
+</body>
+</html>

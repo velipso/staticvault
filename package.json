@@ -1,0 +1,20 @@
+{
+  "name": "staticvault",
+  "version": "1.0.0",
+  "author": "velipso",
+  "license": "0BSD",
+  "type": "module",
+  "main": "./dist/cli.js",
+  "scripts": {
+    "tsc": "tsc"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/velipso/staticvault.git"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.7",
+    "esbuild": "0.25.5",
+    "typescript": "^5.8.3"
+  }
+}

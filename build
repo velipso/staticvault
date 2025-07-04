@@ -1,0 +1,29 @@
+#!/bin/bash
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+ESBUILD=./node_modules/.bin/esbuild
+
+$ESBUILD src/index.ts          \
+  --bundle                     \
+  --minify                     \
+  --format=iife                \
+  --global-name=StaticVault    \
+  --outfile=dist/index.min.js  \
+  --platform=browser           \
+  --log-level=warning
+
+$ESBUILD src/index.ts          \
+  --bundle                     \
+  --format=iife                \
+  --global-name=StaticVault    \
+  --outfile=dist/index.js      \
+  --platform=browser           \
+  --log-level=warning
+
+$ESBUILD src/cli.ts            \
+  --bundle                     \
+  --format=esm                 \
+  --outfile=dist/cli.js        \
+  --platform=node              \
+  --log-level=warning
