@@ -1153,6 +1153,9 @@ function share(show) {
     form.style.display = 'block';
     form.style.margin = '0';
     form.style.padding = '0';
+    const submit = $c('button', { type: 'submit', hidden: true });
+    submit.style.display = 'none';
+    form.appendChild(submit);
     const h1 = $c('h1');
     h1.innerText = 'Password';
     form.appendChild(h1);
@@ -1288,7 +1291,8 @@ function share(show) {
       a.innerText = href;
       sc.appendChild(a);
     };
-    form.addEventListener('submit', () => {
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
       performShare();
       return false;
     });
