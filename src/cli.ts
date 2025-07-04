@@ -13,7 +13,7 @@ import { Vault } from './Vault';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import readline from 'readline';
+import * as readline from 'readline';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -98,20 +98,20 @@ function printUsage(filter?: string) {
   }
 }
 
-async function promptPassword(prompt = 'Password: ') {
+async function promptPassword(prompt = 'Password: '): Promise<string> {
   if (!process.stdin.isTTY) {
     console.error(`Password prompt requires a TTY`);
     process.exit(1);
   }
   process.stdout.write(prompt + ': ');
-  return await new Promise((resolve) => {
+  return await new Promise<string>((resolve) => {
     const stdin = process.stdin;
-    const input = [];
+    const input: string[] = [];
     stdin.setRawMode(true);
     stdin.resume();
     stdin.setEncoding('utf8');
 
-    const onData = (char) => {
+    const onData = (char: string) => {
       if (char === '\r' || char === '\n') {
         stdin.setRawMode(false);
         stdin.pause();
@@ -275,7 +275,11 @@ async function cmdDump(args: string[]): Promise<number> {
     }
     for (const file of vault.listFiles()) {
       const bytes = await vault.getFile(file);
-      await fs.writeFile(path.join(dir, file), bytes);
+      if (!bytes) {
+        console.warn(`Warning: Failed to decrypt file: ${vault.getPath()}/${file}`);
+      } else {
+        await fs.writeFile(path.join(dir, file), bytes);
+      }
     }
   };
   await walk(destination);

@@ -388,8 +388,8 @@ var VaultFolder = class _VaultFolder {
     this.key = key;
     this.metadata = metadata ?? { s: [], f: [] };
   }
-  async serialize() {
-    return await this.key.encryptObject(this.metadata);
+  async serialize(extra) {
+    return await this.key.encryptObject(extra ? { ...extra, ...this.metadata } : this.metadata);
   }
   handle(name) {
     return {
@@ -604,7 +604,7 @@ var Vault = class _Vault {
   }
   static async deserialize(data, password, io) {
     const parts = data.split("~");
-    if (parts.length !== 2 && parts.length !== 3) {
+    if (parts.length !== 2) {
       return null;
     }
     const imp = await CryptoKey.importWithPassword(parts[0], password);
@@ -612,16 +612,16 @@ var Vault = class _Vault {
       return null;
     }
     const { key, difficulty } = imp;
-    if (parts.length === 3) {
-      const exp = parseFloat(await key.decryptString(parts[2]));
-      const now = Math.floor(Date.now() / 6e4);
-      if (now >= exp) {
-        return null;
-      }
-    }
     const root = await VaultFolder.deserialize(-1, key, parts[1]);
     if (!root) {
       return null;
+    }
+    const metadata = root.metadata;
+    if ("x" in metadata && typeof metadata.x === "number") {
+      const now = Math.floor(Date.now() / 6e4);
+      if (now >= metadata.x) {
+        return null;
+      }
     }
     return new _Vault(root, difficulty, io);
   }
@@ -631,15 +631,13 @@ var Vault = class _Vault {
   // expiration is enforced on the client-side... so not 100% secure but at least it's something
   async serialize(password, difficulty = 0, expiresInMinutes = 0) {
     const d = difficulty > 0 ? difficulty : this.difficulty > 0 ? this.difficulty : _Vault.DEFAULT_DIFFICULTY;
-    const parts = [
-      await this.root.key.exportWithPassword(password, d),
-      await this.root.serialize()
-    ];
+    let more = void 0;
     if (expiresInMinutes > 0) {
-      const exp = Math.ceil(Date.now() / 6e4) + expiresInMinutes;
-      parts.push(await this.root.key.encryptString(`${exp}`));
+      more = { x: Math.ceil(Date.now() / 6e4) + expiresInMinutes };
     }
-    return parts.join("~");
+    const k = await this.root.key.exportWithPassword(password, d);
+    const r = await this.root.serialize(more);
+    return `${k}~${r}`;
   }
   async save(forceEverything = false) {
     const saveFile = async (file) => {
@@ -1097,7 +1095,11 @@ Missing destination directory`);
     }
     for (const file of vault.listFiles()) {
       const bytes = await vault.getFile(file);
-      await fs2.writeFile(path.join(dir, file), bytes);
+      if (!bytes) {
+        console.warn(`Warning: Failed to decrypt file: ${vault.getPath()}/${file}`);
+      } else {
+        await fs2.writeFile(path.join(dir, file), bytes);
+      }
     }
   };
   await walk(destination);

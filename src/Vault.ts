@@ -91,8 +91,8 @@ class VaultFolder {
     this.metadata = metadata ?? { s: [], f: [] };
   }
 
-  async serialize(): Promise<string> {
-    return await this.key.encryptObject(this.metadata);
+  async serialize(extra?: object): Promise<string> {
+    return await this.key.encryptObject(extra ? {...extra, ...this.metadata} : this.metadata);
   }
 
   handle(name: string): IVaultMetadataHandle {
@@ -359,7 +359,7 @@ export class Vault {
     io: FileIO
   ): Promise<Vault | null> {
     const parts = data.split('~');
-    if (parts.length !== 2 && parts.length !== 3) {
+    if (parts.length !== 2) {
       return null;
     }
     const imp = await CryptoKey.importWithPassword(parts[0], password);
@@ -367,17 +367,17 @@ export class Vault {
       return null;
     }
     const { key, difficulty } = imp;
-    if (parts.length === 3) {
-      const exp = parseFloat(await key.decryptString(parts[2]));
-      const now = Math.floor(Date.now() / 60000);
-      if (now >= exp) {
-        // expired
-        return null;
-      }
-    }
     const root = await VaultFolder.deserialize(-1, key, parts[1]);
     if (!root) {
       return null;
+    }
+    const metadata: object = root.metadata;
+    if ('x' in metadata && typeof metadata.x === 'number') {
+      const now = Math.floor(Date.now() / 60000);
+      if (now >= metadata.x) {
+        // expired
+        return null;
+      }
     }
     return new Vault(root, difficulty, io);
   }
@@ -394,15 +394,13 @@ export class Vault {
       : this.difficulty > 0
       ? this.difficulty
       : Vault.DEFAULT_DIFFICULTY;
-    const parts = [
-      await this.root.key.exportWithPassword(password, d),
-      await this.root.serialize()
-    ];
+    let more: object | undefined = undefined;
     if (expiresInMinutes > 0) {
-      const exp = Math.ceil(Date.now() / 60000) + expiresInMinutes;
-      parts.push(await this.root.key.encryptString(`${exp}`));
+      more = { x: Math.ceil(Date.now() / 60000) + expiresInMinutes };
     }
-    return parts.join('~');
+    const k = await this.root.key.exportWithPassword(password, d);
+    const r = await this.root.serialize(more);
+    return `${k}~${r}`;
   }
 
   async save(forceEverything = false) {
