@@ -1354,13 +1354,14 @@ function nattok(str) {
     str
       .toLowerCase()
       .trim()
-      .replace(/^([^.]*) \((\d+)\)$/g, '$1$2') // `filename (5)` => `filename5`
-      .replace(/^(.*) \((\d+)\)(\.[^.]*)$/g, '$1$2$3') // `file.name (5).txt` => `file.name5.txt`
-      .replace(/^([^.]*) copy$/g, '$11') // `filename copy` => `filename1`
-      .replace(/^([^.]*) copy (\d+)/g, '$1$2') // `filename copy 5` => `filename5`
-      .replace(/^(.*) copy(\.[^.]*)$/g, '$11$2') // `file.name copy.txt` => file.name1.txt`
-      .replace(/^(.*) copy (\d+)(\.[^.]*)$/g, '$1$2$3') // `file.name copy 5.txt` => file.name5.txt`
+      .replace(/^([^.]*) \((\d+)\)$/g, '$1/$2') // `filename1 (5)` => `filename1/5`
+      .replace(/^(.*) \((\d+)\)(\.[^.]*)$/g, '$1/$2$3') // `f.name1 (5).txt` => `f.name1/5.txt`
+      .replace(/^([^.]*) copy$/g, '$1/1') // `filename1 copy` => `filename1/1`
+      .replace(/^([^.]*) copy (\d+)/g, '$1/$2') // `filename1 copy 5` => `filename1/5`
+      .replace(/^(.*) copy(\.[^.]*)$/g, '$1/1$2') // `f.name1 copy.txt` => f.name1/1.txt`
+      .replace(/^(.*) copy (\d+)(\.[^.]*)$/g, '$1/$2$3') // `f.name1 copy 5.txt` => f.name1/5.txt`
       .replace(/(\d+)/g, '/$1/') // `file123.456.txt` => `file/123/./456/.txt`
+      .replace(/\/+/g, '/') // `//1//2` => `/1/2`
       .replace(/^\/|\/$/g, '') // `/1/.txt` => `1/.txt`
       .split('/')
       .map(p => /^\d+$/.test(p) ? parseFloat(p) : p)
