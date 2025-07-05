@@ -935,12 +935,13 @@ Current command:`);
   }
   if (!filter || filter === "ingest") {
     console.log(`
-- ingest <vault> <source> [-p password]
+- ingest <vault> <source> [-i ignore]+ [-p password]
 
   Encrypt and copy source folders/files into vault.
 
   <vault>          Vault directory
   <source>         Source directory
+  [-i ignore]+     Ignore files/folders that pattern (*, **, ? supported)
   [-p password]    Encryption password`);
   }
   if (!filter || filter === "init") {
@@ -1040,6 +1041,27 @@ function treeChars(depth, last, folder, status) {
     postfix += " " + status;
   }
   return { prefix, postfix };
+}
+function glob(pattern, path2, name, dir) {
+  const neg = pattern.startsWith("!");
+  if (neg || pattern.startsWith("\\!")) {
+    pattern = pattern.substr(1);
+  }
+  const firstSep = pattern.indexOf("/");
+  if (firstSep >= 0 && firstSep < pattern.length - 1) {
+    name = path2 + "/" + name;
+  }
+  if (pattern.endsWith("/")) {
+    if (!dir) {
+      return false;
+    }
+    pattern = pattern.substr(0, pattern.length - 1);
+  }
+  const regex = new RegExp(
+    "^" + pattern.split("**").map((p) => p.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^/]*").replace(/\?/g, "[^/]")).join(".*") + "$"
+  );
+  const result = regex.test(name);
+  return neg ? !result : result;
 }
 async function cmdChpass(args) {
   let target = null;
@@ -1196,6 +1218,7 @@ async function cmdIngest(args) {
   let target = null;
   let source = null;
   let password = null;
+  const ignore = [];
   for (; ; ) {
     const arg = args.shift();
     if (typeof arg === "undefined") break;
@@ -1215,6 +1238,15 @@ Missing password`);
 Cannot specify password more than once`);
         return 1;
       }
+    } else if (arg === "-i") {
+      const ig = args.shift();
+      if (typeof ig === "undefined") {
+        printUsage("ingest");
+        console.error(`
+Missing ignore pattern`);
+        return 1;
+      }
+      ignore.push(ig);
     } else if (target === null) {
       target = arg;
     } else if (source === null) {
@@ -1271,15 +1303,24 @@ Missing source directory`);
       success: "(copied!)",
       linked: "(linked!)"
     };
+    const shouldIgnore = (name, dir) => ignore.some((p) => glob(p, vault.getPath().substr(1), name, dir));
     for (let i = 0; i < items.length; i++) {
       const { name, dir } = items[i];
       const full = path.join(src, name);
       let status = "?";
       if (dir) {
-        status = statusMap[await vault.putFolder(name)];
+        if (shouldIgnore(name, true)) {
+          status = "(ignored)";
+        } else {
+          status = statusMap[await vault.putFolder(name)];
+        }
       } else {
-        const bytes = await srcIO.read(full);
-        status = statusMap[await vault.putFile(name, bytes)];
+        if (shouldIgnore(name, false)) {
+          status = "(ignored)";
+        } else {
+          const bytes = await srcIO.read(full);
+          status = statusMap[await vault.putFile(name, bytes)];
+        }
       }
       const { prefix, postfix } = treeChars(depth, i >= items.length - 1, dir, status);
       console.log(prefix + name + postfix);
@@ -1657,6 +1698,40 @@ async function cmdTest(args) {
     if (file1 !== file2) {
       throw new Error(`Failed to decrypt hello2.txt`);
     }
+  }
+  {
+    const testGlob = (result, pat, path2, name, dir) => {
+      const r = glob(pat, path2, name, dir);
+      if (r !== result) {
+        throw new Error(`Expecting ${result}: glob("${pat}", "${path2}", "${name}", ${dir})`);
+      }
+    };
+    testGlob(true, ".DS_Store", "foo/bar", ".DS_Store", false);
+    testGlob(false, ".DS_Store", "foo/bar", "not_DS_Store", false);
+    testGlob(true, "foo/bar.txt", "foo", "bar.txt", false);
+    testGlob(true, "foo/bar.txt", "foo", "bar.txt", true);
+    testGlob(false, "foo/bar.txt", "foo", "baz.txt", false);
+    testGlob(false, "foo/bar.txt", "other", "bar.txt", false);
+    testGlob(true, "build/", "", "build", true);
+    testGlob(false, "build/", "", "build", false);
+    testGlob(true, "foo/bar/", "foo", "bar", true);
+    testGlob(false, "foo/bar/", "foo", "bar", false);
+    testGlob(true, "*.log", "logs", "error.log", false);
+    testGlob(false, "*.log", "logs", "error.txt", false);
+    testGlob(true, "**/temp", "foo/bar", "temp", true);
+    testGlob(true, "**/temp", "", "temp", true);
+    testGlob(false, "**/temp", "foo/bar", "not_temp", true);
+    testGlob(true, "**/*.bak", "foo/bar", "data.bak", false);
+    testGlob(false, "**/*.bak", "foo/bar", "data.txt", false);
+    testGlob(true, "file?.txt", "", "file1.txt", false);
+    testGlob(false, "file?.txt", "", "file10.txt", false);
+    testGlob(false, "!secret.txt", "", "secret.txt", false);
+    testGlob(true, "!secret.txt", "", "visible.txt", false);
+    testGlob(true, "\\!secret.txt", "", "!secret.txt", false);
+    testGlob(true, "/root.txt", "", "root.txt", false);
+    testGlob(false, "/root.txt", "subdir", "root.txt", false);
+    testGlob(true, "a/**/z.js", "a/b/c", "z.js", false);
+    testGlob(false, "a/**/z.js", "x/y/z", "z.js", false);
   }
   console.log("success!");
   return 0;

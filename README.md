@@ -52,7 +52,7 @@ npx staticvault <command> [arguments]
 Change vault password.
 
 ```bash
-chpass <vault> [-p password] [-n newpassword]
+npx staticvault chpass <vault> [-p password] [-n newpassword]
 ```
 
 ## `dump`
@@ -73,10 +73,11 @@ npx staticvault init <vault> [-p password] [-d difficulty]
 
 ## `ingest`
 
-Encrypt and add files to an existing vault.
+Encrypt and add files to an existing vault. Use `-i` to ignore files/folders based on a pattern
+(`*`, `**`, and `?` supported).
 
 ```bash
-npx staticvault ingest <vault> <source> [-p password]
+npx staticvault ingest <vault> <source> [-i ignore]+ [-p password]
 ```
 
 ## `rekey`
