@@ -982,7 +982,7 @@ function showFolder() {
   const con = $('content');
   con.style.display = '';
   con.innerHTML = '';
-  const folders = vault.listFolders();
+  const folders = natsort(vault.listFolders());
   const currentPath = vault.getPath();
   const items = $c('div', { className: 'items' });
   let needBreak = false;
@@ -1012,7 +1012,7 @@ function showFolder() {
   }
   const others = [];
   const images = [];
-  for (const name of vault.listFiles()) {
+  for (const name of natsort(vault.listFiles())) {
     if (getExt(name) in config.imageMIMEs) {
       images.push(name);
     } else {
@@ -1264,12 +1264,31 @@ function share(show) {
       cancel.innerText = 'Close';
       const nv = await Vault.create(io);
       for (const sh of shareList) {
+        let name = sh.name;
+        // find a unique name by trying foo.txt, foo (2).txt, foo (3).txt, etc
+        let namei = 1;
+        while (nv.getType(name) !== 'notfound') {
+          let pre = name;
+          let post = '';
+          const exti = name.lastIndexOf('.');
+          if (exti >= 0) {
+            pre = name.substr(0, exti);
+            post = name.substr(exti);
+          }
+          let cstr = ` (${namei})`;
+          if (pre.endsWith(cstr)) {
+            pre = pre.substr(0, pre.length - cstr.length);
+          }
+          namei++;
+          pre += ` (${namei})`;
+          name = pre + post;
+        }
         switch (sh.kind) {
           case 'folder':
-            await nv.putFolderLink(sh.name, sh.itemPath, vault).catch(() => {});
+            await nv.putFolderLink(name, sh.itemPath, vault).catch(() => {});
             break;
           case 'file':
-            await nv.putFileLink(sh.name, sh.itemPath, vault).catch(() => {});
+            await nv.putFileLink(name, sh.itemPath, vault).catch(() => {});
             break;
         }
       }
@@ -1328,6 +1347,68 @@ function footer() {
   p.innerText = 'Created using ';
   p.appendChild(a);
   return p;
+}
+
+function nattok(str) {
+  return (
+    str
+      .toLowerCase()
+      .trim()
+      .replace(/^([^.]*) \((\d+)\)$/g, '$1$2') // `filename (5)` => `filename5`
+      .replace(/^(.*) \((\d+)\)(\.[^.]*)$/g, '$1$2$3') // `file.name (5).txt` => `file.name5.txt`
+      .replace(/^([^.]*) copy$/g, '$11') // `filename copy` => `filename1`
+      .replace(/^([^.]*) copy (\d+)/g, '$1$2') // `filename copy 5` => `filename5`
+      .replace(/^(.*) copy(\.[^.]*)$/g, '$11$2') // `file.name copy.txt` => file.name1.txt`
+      .replace(/^(.*) copy (\d+)(\.[^.]*)$/g, '$1$2$3') // `file.name copy 5.txt` => file.name5.txt`
+      .replace(/(\d+)/g, '/$1/') // `file123.456.txt` => `file/123/./456/.txt`
+      .replace(/^\/|\/$/g, '') // `/1/.txt` => `1/.txt`
+      .split('/')
+      .map(p => /^\d+$/.test(p) ? parseFloat(p) : p)
+  );
+}
+
+function natsort(ar) {
+  return ar.sort((astr, bstr) => {
+    const a = nattok(astr);
+    const b = nattok(bstr);
+    for (let i = 0; i < Math.max(a.length, b.length); i++) {
+      const av = i < a.length ? a[i] : '';
+      const bv = i < b.length ? b[i] : '';
+      if (av === bv) continue;
+      let r = 0;
+      if (typeof av === 'string') {
+        if (typeof bv === 'string') {
+          if (av && bv) {
+            // check for shared prefix ('readme.txt' vs 'readme')
+            if (av.startsWith(bv)) {
+              a.splice(i + 1, 0, a[i].substr(bv.length));
+              a[i] = a[i].substr(0, bv.length);
+              continue;
+            } else if (bv.startsWith(av)) {
+              b.splice(i + 1, 0, b[i].substr(av.length));
+              b[i] = b[i].substr(0, av.length);
+              continue;
+            }
+          }
+          r = av.localeCompare(bv);
+        } else { // number
+          r = -1;
+        }
+      } else { // number
+        if (typeof bv === 'string') {
+          r = 1;
+        } else { // number
+          r = av - bv;
+        }
+      }
+      if (r !== 0) return r;
+    }
+    let r = astr.toLowerCase().trim().localeCompare(bstr.toLowerCase().trim());
+    if (r !== 0) return r;
+    r = astr.trim().localeCompare(bstr.trim());
+    if (r !== 0) return r;
+    return astr.localeCompare(bstr);
+  });
 }
 
 window.addEventListener('load', () => {

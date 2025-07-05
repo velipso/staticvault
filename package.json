@@ -1,6 +1,6 @@
 {
   "name": "staticvault",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Encrypt, host, and share files on a static website",
   "author": "velipso",
   "license": "0BSD",

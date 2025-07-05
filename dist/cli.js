@@ -582,6 +582,15 @@ var VaultFolder = class _VaultFolder {
     }
     return false;
   }
+  getType(name) {
+    if (this.isFolder(name)) {
+      return "folder";
+    }
+    if (this.isFile(name)) {
+      return "file";
+    }
+    return "notfound";
+  }
 };
 var Vault = class _Vault {
   static {
@@ -740,6 +749,9 @@ var Vault = class _Vault {
     for (; i < parts.length; i++) {
       await this.enterFolder(parts[i]);
     }
+  }
+  getType(name) {
+    return this.currentFolder().getType(name);
   }
   listFolders() {
     return this.currentFolder().listFolders();

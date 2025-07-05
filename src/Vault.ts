@@ -332,6 +332,16 @@ class VaultFolder {
     }
     return false;
   }
+
+  getType(name: string): 'notfound' | 'folder' | 'file' {
+    if (this.isFolder(name)) {
+      return 'folder';
+    }
+    if (this.isFile(name)) {
+      return 'file';
+    }
+    return 'notfound';
+  }
 }
 
 export class Vault {
@@ -512,6 +522,10 @@ export class Vault {
     for (; i < parts.length; i++) {
       await this.enterFolder(parts[i]);
     }
+  }
+
+  getType(name: string): 'notfound' | 'folder' | 'file' {
+    return this.currentFolder().getType(name);
   }
 
   listFolders() {
