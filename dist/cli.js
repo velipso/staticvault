@@ -1370,7 +1370,7 @@ Cannot specify password more than once`);
 Missing difficulty`);
           return 1;
         }
-        if (~/^[1-9][0-9]*$/.test(d)) {
+        if (!/^[1-9][0-9]*$/.test(d)) {
           printUsage("init");
           console.error(`
 Difficulty must be a positive integer`);
